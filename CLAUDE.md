@@ -16,10 +16,11 @@ Este repositorio contiene el proyecto Android, separado del proyecto macOS MacIP
 - Compila con `assembleDebug`; el APK de desarrollo está en `app/build/outputs/apk/debug/app-debug.apk`.
 - En el AVD `Medium_Phone_API_37.0` se revisaron Canales en vertical y apaisado, logos, reproducción y entrada/salida de pantalla completa. El emulador se conectó tras un arranque limpio sin cargar el snapshot; para mantenerlo abierto entre turnos se lanzó con `launchctl`.
 - No copies aquí direcciones, usuario, contraseña ni URLs de canales de fuentes reales: pueden incluir credenciales.
-- La pantalla completa provisional fuerza apaisado, oculta barras del sistema y paneles, muestra el controlador Media3 y ofrece ajuste para ver la imagen completa o rellenar la pantalla.
-- La Fase 1 añade almacenamiento cifrado de varias fuentes, presentación de nombre y guía por día, tema y controles propios, logos seguros con fallback a iniciales, pantallas adaptables vertical/apaisado, ajustes, temporizador de apagado y controlador Media3 en pantalla completa provisional.
+- La pantalla completa de Fase 2 fuerza apaisado, oculta las barras del sistema y muestra controles propios con brillo, volumen, bloqueo, temporizador, modo de imagen y panel de canales. Restaura el valor previo de `window.attributes.screenBrightness` al salir o destruirse la actividad.
+- La Fase 1 añade almacenamiento cifrado de varias fuentes, presentación de nombre y guía por día, tema y controles propios, logos seguros con fallback a iniciales, pantallas adaptables vertical/apaisado, ajustes y temporizador de apagado.
 - Una lista grande llegó a provocar `OutOfMemoryError` porque se creaba una vista Android por cada canal. La lista se cambió a `ListView` con `BaseAdapter`, que crea y reutiliza filas visibles. No volver a materializar todos los canales en vistas individuales.
 - La vista apaisada sigue la rejilla de referencia: búsqueda en la cabecera, grupos con recuentos, filas compactas, vídeo con controles superpuestos, programa actual/siguiente y cinco acciones inferiores. Se verificó que al salir de pantalla completa regresan los paneles y las barras del sistema mientras el vídeo sigue avanzando. La rotación física, Guía, Ajustes y migración de fuentes aún requieren revisión manual completa.
+- En el emulador API 37 se revisaron los controles de Fase 2, el ocultamiento automático, el bloqueo y el cambio de canal desde el panel lateral sin cerrar pantalla completa. Sigue pendiente comprobar brillo y volumen en hardware real.
 
 El emulador puede desconectarse de ADB o cerrarse; eso no equivale por sí solo a un fallo de la app. Comprueba `adb devices` y el proceso antes de atribuirle un cierre. El emulador API 37 también produjo una traza nativa transitoria de `MediaCodec`; en otra ocasión el evento fue un `OutOfMemoryError` de la UI. La virtualización de filas corrigió esta segunda causa.
 
@@ -109,11 +110,11 @@ El reproductor Android no comparte el relay HLS de MacIPTV. Si una fuente falla 
 
 ### Adaptación de pantalla
 
-El botón ⛶ activa `SCREEN_ORIENTATION_SENSOR_LANDSCAPE`, oculta paneles y barras del sistema y asigna `RESIZE_MODE_ZOOM` por defecto para ocupar la pantalla. «Ver sin recortar» cambia a `RESIZE_MODE_FIT`; volver a «Rellenar pantalla» cambia a zoom. El botón «Salir» o el botón Atrás restaura la interfaz. Conserva el canal durante rotaciones y evita recrear el reproductor.
+El botón ⛶ activa `SCREEN_ORIENTATION_SENSOR_LANDSCAPE` y oculta las barras del sistema. `FullscreenOverlay` reubica el mismo `PlayerView` con `useController=false`; tocar el vídeo muestra u oculta los controles, que se esconden tras cuatro segundos de reproducción. Incluye brillo de ventana, volumen multimedia, anterior/siguiente, progreso en directo, seis acciones y una lista virtualizada de canales del grupo/búsqueda actual. Bloquear deja solo el botón de desbloqueo; Atrás sigue saliendo de pantalla completa. «Sin recortar» usa `RESIZE_MODE_FIT` y «Rellenar» usa zoom. La instancia de `PlayerView` y el medio actual se conservan al entrar y salir.
 
 Al cambiar orientación, `onConfigurationChanged` reconstruye la interfaz y vuelve a conectar el mismo `PlayerView`; el cambio de contenedor no vuelve a llamar a `play()` ni cambia el medio. El reproductor queda adjunto a una sola vista y se libera en `onDestroy`.
 
-La Fase 1 ofrece controles propios en vertical y apaisado (`PlayerView.useController=false`) y conserva el controlador Media3 solo en pantalla completa provisional. En tableta apaisada, los grupos y canales ocupan paneles junto al reproductor; Guía y Ajustes sustituyen el contenido principal. Pestaña, grupo, búsqueda y posición de lista se conservan al rotar. Los botones de icono tienen descripciones accesibles en español.
+Los controles son propios en vertical, apaisado y pantalla completa (`PlayerView.useController=false`). En tableta apaisada, los grupos y canales ocupan paneles junto al reproductor; Guía y Ajustes sustituyen el contenido principal. Pestaña, grupo, búsqueda y posición de lista se conservan al rotar. Los botones de icono tienen descripciones accesibles en español. El panel de canales de pantalla completa usa `ListView` y obtiene títulos de programa de las presentaciones ya calculadas.
 
 ## Progreso funcional
 
@@ -135,7 +136,7 @@ La Fase 1 ofrece controles propios en vertical y apaisado (`PlayerView.useContro
 
 ## Pendiente y posibles siguientes pasos
 
-La Fase 1 está implementada. Próximos pasos, sujetos a la prioridad del usuario:
+Las Fases 1 y 2 están implementadas. Próximos pasos, sujetos a la prioridad del usuario:
 
 1. Añadir pruebas unitarias para M3U, XMLTV, generación de URLs Xtream, identidad estable y cifrado/descifrado.
 2. Separar estado, carga de datos y lógica de reproducción de `MainActivity` hacia clases con ciclo de vida claro; valorar ViewModel y repositorio.
@@ -143,7 +144,7 @@ La Fase 1 está implementada. Próximos pasos, sujetos a la prioridad del usuari
 4. Endurecer XMLTV frente a DTD/entidades y aceptar variantes de zona horaria que aparezcan en proveedores reales.
 5. Valorar un relay HLS Android con validación de cada manifiesto, segmento, clave y redirección si los proveedores muestran fallos de token/segmento.
 6. Probar API 26 y un dispositivo físico, además del AVD API 37; comprobar rotación, listas grandes, HEVC, sonido, cambios rápidos de canal y reanudación.
-7. Continuar con la Fase 2 de rediseño según la especificación aprobada, incluida la revisión visual cuando el emulador esté disponible.
+7. Planificar la Fase 3 de recordatorios y Cast tras la revisión de Fase 2 con el usuario; Cast sigue siendo un aviso de búsqueda sin conexión real.
 
 No se ha implementado Android TV, reproducción en segundo plano, Picture-in-Picture ni control remoto específico.
 

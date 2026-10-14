@@ -14,7 +14,7 @@ Abre el directorio del proyecto en Android Studio, espera a que termine la sincr
 - Guía XMLTV, actualización de listas, demo y opción de abrir el canal en otra app con aviso sobre credenciales.
 - Paneles de grupos y canales plegables; vista adaptable a móvil y tableta.
 - En apaisado, paneles de grupos y canales junto al reproductor; pestañas de Guía y Ajustes.
-- Controles propios en vertical y apaisado; pantalla completa provisional con controlador Media3 y opción para rellenar la pantalla o conservar la imagen completa.
+- Controles propios en vertical, apaisado y pantalla completa, con brillo, volumen, bloqueo, temporizador, modo de imagen y panel lateral de canales.
 - Varias fuentes, logos con fallback a iniciales, información de programación y temporizador de apagado.
 - Fuente cifrada mediante Android Keystore; HTTP y servidores locales requieren autorización en la configuración de la fuente.
 
@@ -22,4 +22,4 @@ La guía XMLTV es opcional para M3U. En Xtream se obtiene automáticamente del p
 
 ## Estado de esta versión
 
-La Fase 1 del rediseño está implementada. Se compiló y se revisaron en el emulador API 37 los canales en vertical y apaisado, la reproducción y la entrada/salida de pantalla completa. Queda pendiente una revisión manual completa de Guía, Ajustes y migración de fuentes. Consulta `CLAUDE.md` para arquitectura, decisiones, alcance y siguientes pasos.
+Las Fases 1 y 2 del rediseño están implementadas. La pantalla completa usa el mismo reproductor que las otras vistas; los controles se ocultan a los cuatro segundos durante la reproducción y el brillo de la ventana vuelve a su valor previo al salir. Se compiló y se revisó en el emulador API 37. Queda pendiente una revisión manual completa de Guía, Ajustes y migración de fuentes, además de probar en un dispositivo físico. La Fase 3 (recordatorios y Cast) sigue pendiente. Consulta `CLAUDE.md` para arquitectura, decisiones y siguientes pasos.
