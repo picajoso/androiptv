@@ -18,6 +18,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import es.maciptv.android.ui.ChannelRow
+import es.maciptv.android.ui.LogoLoader
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -44,30 +46,24 @@ class MainActivity : ComponentActivity() {
         override fun getItemId(position: Int) = displayedChannels[position].id.hashCode().toLong()
         override fun hasStableIds() = true
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val row = (convertView as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(label("").apply {
-                    setPadding(dp(10), 0, 0, 0)
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                }, LinearLayout.LayoutParams(0, dp(48), 1f))
-                addView(button("☆") {}, LinearLayout.LayoutParams(dp(48), dp(48)))
-            }
+            val row = (convertView as? ChannelRow) ?: ChannelRow(this@MainActivity)
             val channel = getItem(position)
-            (row.getChildAt(0) as TextView).apply {
-                text = presentationById[channel.id]?.displayName ?: channel.name
-                setOnClickListener { selectChannel(channel) }
-            }
-            (row.getChildAt(1) as Button).apply {
-                text = if (channel.id in store.favorites) "★" else "☆"
-                setOnClickListener {
+            val presentation = presentationById[channel.id]
+            if (presentation != null) row.bind(
+                item = presentation,
+                isFavorite = channel.id in store.favorites,
+                selected = channel.id == selected?.id,
+                network = activeNetwork,
+                landscape = isWide(),
+                onSelect = { selectChannel(channel) },
+                onFavorite = {
                     val next = store.favorites.toMutableSet()
                     if (!next.add(channel.id)) next.remove(channel.id)
                     store.favorites = next
-                    if (group == "Favoritos") renderChannels() else notifyDataSetChanged()
-                }
-            }
+                    renderChannels()
+                },
+                onHttpBlocked = { /* surfaced in source settings */ }
+            )
             return row
         }
     }
@@ -94,6 +90,7 @@ class MainActivity : ComponentActivity() {
     private var fillVideo = true
     private var loading = false
     private var loadGeneration = 0
+    private var logoHttpRestricted = false
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -381,6 +378,7 @@ class MainActivity : ComponentActivity() {
     private fun useActiveNetwork(config: SourceConfig?): SafeNetwork {
         requireNotNull(config) { "No hay una fuente activa" }
         if (activeNetwork == null || activeNetworkConfig != config) {
+            LogoLoader.clear()
             activeNetwork = SafeNetwork(config)
             activeNetworkConfig = config
         }
@@ -440,6 +438,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (generation != loadGeneration) return@runOnUiThread
                     channels = parsed; guide = programmes; loading = false
+                    logoHttpRestricted = !config.allowHttp && parsed.any { it.logo.startsWith("http://", true) }
                     presentations = derivedPresentations
                     presentationById = presentations.associateBy { it.channel.id }
                     presentationGeneration++
