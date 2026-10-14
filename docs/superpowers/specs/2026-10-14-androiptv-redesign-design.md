@@ -14,7 +14,7 @@ Use the Modernist tokens from the handoff: square corners, left-aligned text and
 
 Keep MainActivity as the app and playback state coordinator, but move rendering into focused Kotlin files under es.maciptv.android.ui: theme and dimensions, reusable channel row, portrait screens, landscape panels, settings, provider sheet, and dialogs/toasts. Add a ChannelName presentation helper separately. Continue building Views from Kotlin; do not add XML layouts or Compose.
 
-Keep the existing PlaybackController and one PlayerView. Host the player view in a stable root container and adjust its bounds/placement as the screen changes, instead of stopping playback or creating a second player. Navigation between preview, portrait player, landscape panels, and fullscreen must not call play() or reload the media item. Handle configuration changes in the existing activity lifecycle path and preserve the current fullscreen behavior in Phase 1.
+Keep one PlaybackController and one PlayerView. The PlayerView may move between containers when screens change. Navigation between preview, portrait player, landscape panels, and fullscreen must not call play(), change the selected video, or reload the media item. Handle configuration changes in the existing activity lifecycle path and preserve the current fullscreen behavior in Phase 1.
 
 Use the current ListView/adapter virtualization for large playlists, replacing its row presentation with reusable channel rows. Keep current networking and parser implementations unless a focused change is required to support the new screens. On orientation changes preserve the selected tab, group, search text, and channel-list scroll position.
 
@@ -30,7 +30,7 @@ Persist the resume-last-channel preference and fill/fit preference. Implement sl
 
 Add ChannelName as a display-only transformation. Recognize country prefixes (|XX|, XX:, XX - ), quality/codec suffixes (UHD, 4K, FHD, HD, SD, HEVC, H265), and the acronym/brand exceptions in the handoff. Fall back to the original name if parsing produces no useful display name. Compute cleaned names when a playlist is loaded, not while drawing each row. Filtering matches both Channel.name (original) and the cleaned display name, as well as group names.
 
-Load Channel.logo images off the main thread using the existing OkHttp dependency through the existing SafeNetwork validation policy. Follow each source’s HTTP authorization: if a logo URL uses HTTP and HTTP is not authorized for that source, do not request it, show channel initials, and indicate the restriction on that source’s settings row. Bound response bytes and decoded image dimensions, show initials when a logo is absent or fails, and cache decoded images in a bounded in-memory LruCache. Do not add Coil or another image library. A persistent/disk cache can be considered later without changing this phase’s rendering contract.
+Load Channel.logo images off the main thread using the existing OkHttp dependency through the existing SafeNetwork validation policy. Reuse the single SafeNetwork/OkHttpClient instance for the active source across playback and logo requests. Follow each source’s HTTP authorization: if a logo URL uses HTTP and HTTP is not authorized for that source, do not request it, show channel initials, and indicate the restriction on that source’s settings row. Bound response bytes and decode images to the on-screen size rather than source resolution. Bound the in-memory LruCache to one sixteenth of the available app heap, measured in bitmap bytes. Show initials when a logo is absent or fails. Do not add Coil or another image library.
 
 ## Phase 1 — screens, settings, and existing fullscreen
 
@@ -38,8 +38,8 @@ Deliver all of the following as one compilable phase:
 
 ### Portrait navigation and Channels
 
-- Three bottom tabs: Canales, Guía, Ajustes. Use the handoff’s 56 dp height, 2 dp top rule, equal widths, left alignment, icons, and active state.
-- Channels screen with a 16:9 live preview when a channel is selected, current programme and progress, source/title header, search, horizontally scrolling group chips, virtualized rows, favorites, now/next information, progress, and specified empty/loading states.
+- Three bottom tabs: Canales, Guía, Ajustes. Use the handoff’s 56 dp height, 2 dp top rule, equal widths, left alignment, icons, and active state. Until the Settings screen is delivered in Task 6, Ajustes opens the current source dialog so intermediate builds remain usable.
+- Channels screen with a 16:9 live preview when a channel is selected, current programme and progress, source/title header, search, horizontally scrolling group chips, virtualized rows, favorites, now/next information, progress, and specified empty/loading states. Refresh programme/progress data once per minute on a background executor or for visible rows only; never block the main thread.
 - Selecting a channel from a row starts it and opens the portrait player. Preview taps open the player; its explicit play/pause and fullscreen controls remain operable. The current programme and its progress are cached as derived view data and refreshed once per minute; row binding reads that cached value instead of recalculating programme state per row.
 - Search includes original and cleaned channel names and group names. Group order is Todos, Favoritos, Recientes, then playlist group order.
 
@@ -78,7 +78,7 @@ Add programme reminders using AlarmManager and notifications, and Cast using Med
 2. Existing M3U URL/file, Xtream, demo, XMLTV, HTTP/local authorization, favorites, recents, previous channel, resume behavior, external playback warning, and fill/fit behavior remain available.
 3. A legacy installation opens with its source, favorites, recents, and last channel preserved; stableId() output is unchanged.
 4. Display-name cleanup never mutates the stored/original channel name, and searches match both forms.
-5. Switching between preview, player, landscape panels, and fullscreen retains the same player/controller and does not reload the selected media item.
+5. Switching between preview, player, landscape panels, and fullscreen may reparent PlayerView but never calls play(), changes the selected video, or reloads its media item.
 6. The existing fullscreen controls continue to work in Phase 1; Phase 2 adds the enhanced overlay.
 7. Logos load asynchronously through existing networking code, respect URL validation and bounded decoding, and fall back to initials.
 8. Screen layouts follow the supplied tokens and avoid rounded corners, unintended shadows, centered button labels, and undersized touch targets.
@@ -88,3 +88,5 @@ Add programme reminders using AlarmManager and notifications, and Cast using Med
 12. Rotation preserves tab, group, search, and list scroll position. “Mañana” displays only programmes in the next local calendar day.
 13. HTTP-blocked logo URLs fall back to initials and expose the restriction in settings. Icon-only controls include Spanish accessibility descriptions.
 14. The in-memory sleep timer is not stored and is cancelled on destruction or removal of the active source. Phase 2 restores the original system brightness when fullscreen ends.
+15. Until Task 6, Ajustes opens the existing source dialog. One SafeNetwork/OkHttpClient instance is reused per active source; logo bitmaps decode to screen dimensions and their memory cache uses one sixteenth of the app heap.
+16. Programme/progress refresh runs in the background or updates visible rows only. Dates and times use the device locale. Phase 1 uses custom portrait controls (PlayerView.useController=false) and the Media3 controller only in provisional fullscreen.
