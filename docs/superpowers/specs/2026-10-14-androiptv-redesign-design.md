@@ -16,21 +16,21 @@ Keep MainActivity as the app and playback state coordinator, but move rendering 
 
 Keep the existing PlaybackController and one PlayerView. Host the player view in a stable root container and adjust its bounds/placement as the screen changes, instead of stopping playback or creating a second player. Navigation between preview, portrait player, landscape panels, and fullscreen must not call play() or reload the media item. Handle configuration changes in the existing activity lifecycle path and preserve the current fullscreen behavior in Phase 1.
 
-Use the current ListView/adapter virtualization for large playlists, replacing its row presentation with reusable channel rows. Keep current networking and parser implementations unless a focused change is required to support the new screens.
+Use the current ListView/adapter virtualization for large playlists, replacing its row presentation with reusable channel rows. Keep current networking and parser implementations unless a focused change is required to support the new screens. On orientation changes preserve the selected tab, group, search text, and channel-list scroll position.
 
 ## State and source migration
 
-Extend SecureStore to store multiple saved sources plus an active source identifier. Encrypt the source collection with the existing Android Keystore AES/GCM approach. On first load, migrate the legacy single encrypted SourceConfig as a saved source named “Mi lista”; associate the legacy last-channel ID with that source. Preserve favorites and recents as their existing values. Do not change stableId() or its hash inputs. New selections update the selected source’s last-channel ID while retaining the migrated last channel.
+Extend SecureStore to store multiple saved sources plus an active source identifier. Encrypt the source collection with the existing Android Keystore AES/GCM approach. On first load, migrate the legacy single encrypted SourceConfig as a saved source named “Mi lista”; associate the legacy last-channel ID with that source. Preserve favorites and recents as their existing values. Do not change stableId() or its hash inputs. New selections update the selected source’s last-channel ID while retaining the migrated last channel. Delete the old encrypted source only after the new collection has been written and read back successfully. Removing one source must not clear the last-channel ID belonging to any other source.
 
 Support adding, selecting, refreshing, and deleting saved sources. Keep M3U URL, M3U file, Xtream Codes, demo, XMLTV, HTTP authorization, and local-server authorization behavior. File imports continue using the Android document picker. The provider bottom sheet validates required fields and saves through the existing secure store.
 
-Persist the resume-last-channel preference and fill/fit preference. Implement sleep timer choices of No, 30, 60, and 90 minutes; changing to No cancels the pending timer. When the timer expires, pause playback. Do not expose source credentials in logs, errors, or documentation.
+Persist the resume-last-channel preference and fill/fit preference. Implement sleep timer choices of No, 30, 60, and 90 minutes; changing to No cancels the pending timer. When the timer expires, pause playback. Do not persist the active timer; cancel it in onDestroy() and when removing the active source. Do not expose source credentials in logs, errors, or documentation.
 
 ## Channel names and logos
 
-Add ChannelName as a display-only transformation. Recognize country prefixes (|XX|, XX:, XX - ), quality/codec suffixes (UHD, 4K, FHD, HD, SD, HEVC, H265), and the acronym/brand exceptions in the handoff. Fall back to the original name if parsing produces no useful display name. Filtering matches both Channel.name (original) and the cleaned display name, as well as group names.
+Add ChannelName as a display-only transformation. Recognize country prefixes (|XX|, XX:, XX - ), quality/codec suffixes (UHD, 4K, FHD, HD, SD, HEVC, H265), and the acronym/brand exceptions in the handoff. Fall back to the original name if parsing produces no useful display name. Compute cleaned names when a playlist is loaded, not while drawing each row. Filtering matches both Channel.name (original) and the cleaned display name, as well as group names.
 
-Load Channel.logo images off the main thread using the existing OkHttp dependency through the existing SafeNetwork validation policy. Bound response bytes and decoded image dimensions, show initials when a logo is absent or fails, and cache decoded images in a bounded in-memory LruCache. Do not add Coil or another image library. A persistent/disk cache can be considered later without changing this phase’s rendering contract.
+Load Channel.logo images off the main thread using the existing OkHttp dependency through the existing SafeNetwork validation policy. Follow each source’s HTTP authorization: if a logo URL uses HTTP and HTTP is not authorized for that source, do not request it, show channel initials, and indicate the restriction on that source’s settings row. Bound response bytes and decoded image dimensions, show initials when a logo is absent or fails, and cache decoded images in a bounded in-memory LruCache. Do not add Coil or another image library. A persistent/disk cache can be considered later without changing this phase’s rendering contract.
 
 ## Phase 1 — screens, settings, and existing fullscreen
 
@@ -40,13 +40,13 @@ Deliver all of the following as one compilable phase:
 
 - Three bottom tabs: Canales, Guía, Ajustes. Use the handoff’s 56 dp height, 2 dp top rule, equal widths, left alignment, icons, and active state.
 - Channels screen with a 16:9 live preview when a channel is selected, current programme and progress, source/title header, search, horizontally scrolling group chips, virtualized rows, favorites, now/next information, progress, and specified empty/loading states.
-- Selecting a channel from a row starts it and opens the portrait player. Preview taps open the player; its explicit play/pause and fullscreen controls remain operable.
+- Selecting a channel from a row starts it and opens the portrait player. Preview taps open the player; its explicit play/pause and fullscreen controls remain operable. The current programme and its progress are cached as derived view data and refreshed once per minute; row binding reads that cached value instead of recalculating programme state per row.
 - Search includes original and cleaned channel names and group names. Group order is Todos, Favoritos, Recientes, then playlist group order.
 
 ### Portrait player and guide
 
-- Portrait player with 16:9 video, custom back/fullscreen controls, current channel/programme metadata, favorite control, previous/next, external playback, and today’s programme table.
-- Guide tab with channel selector, today/tomorrow selector, channel metadata, “Ver canal”, and programme list. Existing guide data and parsing remain the source of programme content. Reminder controls are deferred to Phase 3.
+- Portrait player with 16:9 video, custom back/fullscreen controls, current channel/programme metadata, favorite control, previous/next, external playback, and today’s programme table. Use custom portrait controls and set PlayerView.useController = false outside fullscreen; the provisional fullscreen screen may use the Media3 controller.
+- Guide tab with channel selector, today/tomorrow selector, channel metadata, “Ver canal”, and programme list. The “Mañana” view filters programme entries to the next local calendar day. Existing guide data and parsing remain the source of programme content. Reminder controls are deferred to Phase 3.
 
 ### Settings and provider management
 
@@ -62,11 +62,11 @@ Deliver all of the following as one compilable phase:
 
 ### Fullscreen in Phase 1
 
-Preserve the existing fullscreen entry/exit, landscape orientation request, hidden system bars, and fill/fit behavior. Keep the player accessible and operational. The advanced translucent control overlay, brightness/volume sliders, lock, auto-hide, and channel drawer are Phase 2.
+Preserve the existing fullscreen entry/exit, landscape orientation request, hidden system bars, and fill/fit behavior. Keep the player accessible and operational. The advanced translucent control overlay, brightness/volume sliders, lock, auto-hide, and channel drawer are Phase 2. Set PlayerView.useController = true only for this provisional fullscreen view; portrait playback uses custom controls and no Media3 controller. Every icon-only button has a Spanish accessibility description (contentDescription).
 
 ## Phase 2 — advanced fullscreen controls
 
-Replace the basic fullscreen toolbar with the dark overlay described in the handoff: auto-hide after four seconds while playing, top channel/programme header, brightness and volume sliders, previous/next names, live progress, six action cells, lock/unlock affordance, and a 300 dp right-side channel drawer. Selecting a channel in the drawer changes playback without exiting fullscreen. Preserve system back/gesture behavior and the player instance.
+Replace the basic fullscreen toolbar with the dark overlay described in the handoff: auto-hide after four seconds while playing, top channel/programme header, brightness and volume sliders, previous/next names, live progress, six action cells, lock/unlock affordance, and a 300 dp right-side channel drawer. Selecting a channel in the drawer changes playback without exiting fullscreen. Preserve system back/gesture behavior and the player instance. Restore the system’s original screen brightness when exiting fullscreen, including when the activity is destroyed while fullscreen is active.
 
 ## Phase 3 — reminders and Cast
 
@@ -83,3 +83,8 @@ Add programme reminders using AlarmManager and notifications, and Cast using Med
 7. Logos load asynchronously through existing networking code, respect URL validation and bounded decoding, and fall back to initials.
 8. Screen layouts follow the supplied tokens and avoid rounded corners, unintended shadows, centered button labels, and undersized touch targets.
 9. After Phase 1 is built and reviewed, stop and wait for the user before starting Phase 2. Repeat the same review gate after Phase 2 before Phase 3.
+10. Source migration deletes legacy encrypted data only after writing and verifying its replacement; removing a source preserves other sources’ last-channel values.
+11. Channel names are precomputed when loading data; current programme and progress refresh once per minute, not while binding each row.
+12. Rotation preserves tab, group, search, and list scroll position. “Mañana” displays only programmes in the next local calendar day.
+13. HTTP-blocked logo URLs fall back to initials and expose the restriction in settings. Icon-only controls include Spanish accessibility descriptions.
+14. The in-memory sleep timer is not stored and is cancelled on destruction or removal of the active source. Phase 2 restores the original system brightness when fullscreen ends.
