@@ -22,4 +22,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.activity:activity:1.13.0")
     implementation("androidx.core:core:1.17.0")
+    testImplementation("junit:junit:4.13.2")
 }

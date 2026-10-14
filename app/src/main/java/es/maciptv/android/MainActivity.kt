@@ -19,6 +19,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -54,7 +56,7 @@ class MainActivity : ComponentActivity() {
             }
             val channel = getItem(position)
             (row.getChildAt(0) as TextView).apply {
-                text = channel.name
+                text = presentationById[channel.id]?.displayName ?: channel.name
                 setOnClickListener { selectChannel(channel) }
             }
             (row.getChildAt(1) as Button).apply {
@@ -72,7 +74,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var now: TextView
     private lateinit var search: EditText
-    private val worker = Executors.newSingleThreadExecutor()
+    private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
     private var source: SourceConfig? = null
     private var savedSources = SourceCollection(emptyList(), null)
     private var activeSavedSource: SavedSource? = null
@@ -80,6 +82,9 @@ class MainActivity : ComponentActivity() {
     private var activeNetworkConfig: SourceConfig? = null
     private var channels: List<Channel> = emptyList()
     private var guide: Map<String, List<Programme>> = emptyMap()
+    private var presentations: List<ChannelPresentation> = emptyList()
+    private var presentationById: Map<String, ChannelPresentation> = emptyMap()
+    private var presentationGeneration = 0
     private var selected: Channel? = null
     private var previous: String? = null
     private var group = "Todos"
@@ -119,6 +124,7 @@ class MainActivity : ComponentActivity() {
             }
         })
         buildUi()
+        worker.scheduleAtFixedRate({ refreshPresentations() }, 1, 1, TimeUnit.MINUTES)
         try {
             savedSources = store.loadSources()
             activeSavedSource = savedSources.activeSource
@@ -257,7 +263,7 @@ class MainActivity : ComponentActivity() {
         return channels.filter { c ->
             (group == "Todos" || group == "Favoritos" && c.id in favorites ||
                 group == "Recientes" && c.id in recents || c.group == group) &&
-                (q.isEmpty() || c.name.contains(q, true) || c.group.contains(q, true))
+                ChannelName.matches(c, presentationById[c.id]?.displayName ?: c.name, q)
         }.let { list -> if (group == "Recientes") list.sortedBy { recents.indexOf(it.id) } else list }
     }
     private fun renderChannels() {
@@ -287,8 +293,28 @@ class MainActivity : ComponentActivity() {
         val next = (list.indexOfFirst { it.id == selected?.id } + delta).coerceIn(0, list.lastIndex)
         selectChannel(list[next])
     }
-    private fun currentProgramme(c: Channel): Programme? = guide[c.tvgId].orEmpty()
-        .firstOrNull { System.currentTimeMillis() in it.startMillis until it.endMillis }
+    private fun currentProgramme(c: Channel): Programme? = presentationById[c.id]?.currentProgramme
+
+    private fun refreshPresentations() {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            val channelSnapshot = channels
+            val guideSnapshot = guide
+            val generation = ++presentationGeneration
+            worker.execute {
+                val fresh = buildChannelPresentations(channelSnapshot, guideSnapshot, System.currentTimeMillis())
+                runOnUiThread {
+                    if (generation != presentationGeneration || isFinishing || isDestroyed) return@runOnUiThread
+                    presentations = fresh
+                    presentationById = fresh.associateBy { it.channel.id }
+                    selected?.let { selectedChannel ->
+                        now.text = selectedChannel.name + (currentProgramme(selectedChannel)?.let { " · ${it.title}" } ?: "")
+                    }
+                    renderChannels()
+                }
+            }
+        }
+    }
 
     private fun sourceDialog() {
         val choices = arrayOf("URL M3U", "Archivo M3U", "Xtream Codes", "Demostración", "Quitar fuente")
@@ -410,9 +436,13 @@ class MainActivity : ComponentActivity() {
                 val programmes = if (config.kind == SourceKind.DEMO) DemoContent.guide() else if (config.guideUrl().isNotBlank()) runCatching {
                     PlaylistParsers.xmltv(network.fetch(config.guideUrl(), 40_000_000))
                 }.getOrDefault(emptyMap()) else emptyMap()
+                val derivedPresentations = buildChannelPresentations(parsed, programmes, System.currentTimeMillis())
                 runOnUiThread {
                     if (generation != loadGeneration) return@runOnUiThread
                     channels = parsed; guide = programmes; loading = false
+                    presentations = derivedPresentations
+                    presentationById = presentations.associateBy { it.channel.id }
+                    presentationGeneration++
                     group = "Todos"; renderGroups(); renderChannels()
                     status.text = "${channels.size} canales"
                     val resumeId = if (restore) activeSavedSource?.lastChannelId else selected?.id
@@ -455,5 +485,5 @@ class MainActivity : ComponentActivity() {
     }
     private fun showError(message: String) { status.text = message; Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); buildUi() }
-    override fun onDestroy() { playback.release(); worker.shutdownNow(); super.onDestroy() }
+    override fun onDestroy() { presentationGeneration++; playback.release(); worker.shutdownNow(); super.onDestroy() }
 }
