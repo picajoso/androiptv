@@ -12,7 +12,8 @@ data class SavedSource(
     val config: SourceConfig,
     val channelCount: Int = 0,
     val updatedAt: Long = 0L,
-    val lastChannelId: String? = null
+    val lastChannelId: String? = null,
+    val logoHttpRestricted: Boolean = false
 ) {
     fun toJson() = JSONObject()
         .put("id", id)
@@ -21,6 +22,7 @@ data class SavedSource(
         .put("channelCount", channelCount)
         .put("updatedAt", updatedAt)
         .put("lastChannelId", lastChannelId)
+        .put("logoHttpRestricted", logoHttpRestricted)
 
     companion object {
         fun fromJson(value: JSONObject) = SavedSource(
@@ -29,7 +31,8 @@ data class SavedSource(
             config = SourceConfig.fromJson(value.getJSONObject("config").toString()),
             channelCount = value.optInt("channelCount"),
             updatedAt = value.optLong("updatedAt"),
-            lastChannelId = value.optString("lastChannelId").takeUnless { it.isBlank() || it == "null" }
+            lastChannelId = value.optString("lastChannelId").takeUnless { it.isBlank() || it == "null" },
+            logoHttpRestricted = value.optBoolean("logoHttpRestricted", false)
         )
     }
 }

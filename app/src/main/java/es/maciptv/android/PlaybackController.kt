@@ -22,10 +22,12 @@ class PlaybackController(context: Context, val view: PlayerView) {
     private var playingOriginal = false
     var onError: ((String) -> Unit)? = null
     val isPlaying: Boolean get() = player.playWhenReady
+    val currentChannelId: String? get() = current?.id
 
     fun togglePlayPause() {
         if (player.playWhenReady) player.pause() else if (current != null) player.play()
     }
+    fun pause() { player.pause() }
 
     init {
         view.player = player

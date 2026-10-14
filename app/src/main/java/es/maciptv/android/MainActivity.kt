@@ -30,6 +30,13 @@ import es.maciptv.android.ui.LogoLoader
 import es.maciptv.android.ui.PlayerActions
 import es.maciptv.android.ui.PlayerUiState
 import es.maciptv.android.ui.PortraitScreens
+import es.maciptv.android.ui.ConfirmationDialog
+import es.maciptv.android.ui.ProviderSheet
+import es.maciptv.android.ui.SettingsActions
+import es.maciptv.android.ui.SettingsScreen
+import es.maciptv.android.ui.SettingsUiState
+import es.maciptv.android.ui.SleepTimer
+import es.maciptv.android.ui.NoticeView
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -40,6 +47,7 @@ import java.time.ZoneId
 class MainActivity : ComponentActivity() {
     private lateinit var store: SecureStore
     private lateinit var playback: PlaybackController
+    private lateinit var sleepTimer: SleepTimer
     private lateinit var root: LinearLayout
     private lateinit var topBar: View
     private lateinit var bottomControls: View
@@ -89,6 +97,7 @@ class MainActivity : ComponentActivity() {
     private var activeSavedSource: SavedSource? = null
     private var activeNetwork: SafeNetwork? = null
     private var activeNetworkConfig: SourceConfig? = null
+    private var activeNetworkSourceId: String? = null
     private var channels: List<Channel> = emptyList()
     private var guide: Map<String, List<Programme>> = emptyMap()
     private var presentations: List<ChannelPresentation> = emptyList()
@@ -111,6 +120,8 @@ class MainActivity : ComponentActivity() {
     private var channelListScrollPosition = 0
     private var channelListScrollOffset = 0
     private var searchOpen = false
+    private var pendingProviderName: String? = null
+    private var pendingProviderSource: SavedSource? = null
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -120,17 +131,34 @@ class MainActivity : ComponentActivity() {
             val http = CheckBox(this).apply { text = "Permitir HTTP"; form.addView(this) }
             val local = CheckBox(this).apply { text = "Permitir servidores locales"; form.addView(this) }
             AlertDialog.Builder(this).setTitle("Archivo M3U").setView(form)
-                .setPositiveButton("Importar") { _, _ -> setSource(SourceConfig(SourceKind.M3U_FILE,
-                    uri.toString(), xmltv = xmltv.text.toString().trim(), allowHttp = http.isChecked, localServer = local.isChecked)) }
-                .setNegativeButton("Cancelar", null).show()
-        }
+                .setPositiveButton("Importar") { _, _ ->
+                    val config = SourceConfig(SourceKind.M3U_FILE, uri.toString(), xmltv = xmltv.text.toString().trim(),
+                        allowHttp = http.isChecked, localServer = local.isChecked)
+                    val pendingName = pendingProviderName
+                    if (pendingName == null) setSource(config)
+                    else saveProviderSource(pendingProviderSource?.copy(config = config, name = pendingName,
+                        updatedAt = System.currentTimeMillis(), channelCount = 0,
+                        lastChannelId = if (pendingProviderSource?.config == config) pendingProviderSource?.lastChannelId else null)
+                        ?: SavedSource(UUID.randomUUID().toString(), pendingName, config, updatedAt = System.currentTimeMillis()))
+                    pendingProviderName = null
+                    pendingProviderSource = null
+                }
+                .setNegativeButton("Cancelar") { _, _ -> pendingProviderName = null; pendingProviderSource = null }
+                .setOnCancelListener { pendingProviderName = null; pendingProviderSource = null }
+                .show()
+        } else { pendingProviderName = null; pendingProviderSource = null }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = SecureStore(this)
+        fillVideo = store.fillVideo
         playerView = PlayerView(this).apply { setBackgroundColor(Color.BLACK); useController = false }
         playback = PlaybackController(this, playerView)
+        sleepTimer = SleepTimer {
+            playback.pause()
+            runOnUiThread { showError("El temporizador ha pausado la reproducción") }
+        }
         playback.onError = { message -> runOnUiThread { showError(message) } }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -150,7 +178,7 @@ class MainActivity : ComponentActivity() {
             activeSavedSource = savedSources.activeSource
             source = activeSavedSource?.config
             source?.let(::useActiveNetwork)
-            source?.let { load(it, true) }
+            source?.let { load(it, store.resumeLastChannel) }
         } catch (e: Exception) { showError("No se pudo abrir la fuente guardada: ${e.message}") }
     }
 
@@ -200,6 +228,8 @@ class MainActivity : ComponentActivity() {
         videoFrame.addView(playerView, FrameLayout.LayoutParams(-1, -1))
         fitButton = button(if (fillVideo) "Ver sin recortar" else "Rellenar pantalla") {
             fillVideo = !fillVideo
+            store.fillVideo = fillVideo
+            store.fillVideo = fillVideo
             fitButton.text = if (fillVideo) "Ver sin recortar" else "Rellenar pantalla"
             playerView.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
@@ -338,7 +368,7 @@ class MainActivity : ComponentActivity() {
                     ))
                 portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
             }
-            AppTab.SETTINGS -> sourceDialog()
+            AppTab.SETTINGS -> portraitHost.addView(renderSettings(), LinearLayout.LayoutParams(-1, -1))
         }
         syncPortraitTabs()
     }
@@ -369,10 +399,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun selectPortraitTab(tab: AppTab) {
-        if (tab == AppTab.SETTINGS) {
-            sourceDialog()
-            return
-        }
         if (::channelList.isInitialized && channelList.childCount > 0) {
             channelListScrollPosition = channelList.firstVisiblePosition
             channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
@@ -380,6 +406,123 @@ class MainActivity : ComponentActivity() {
         portraitPlayer = false
         appTab = tab
         renderPortraitContent()
+    }
+
+    private fun renderSettings(): View = SettingsScreen.render(this,
+        SettingsUiState(
+            sources = savedSources.sources,
+            activeSourceId = savedSources.activeSourceId,
+            resumeLastChannel = store.resumeLastChannel,
+            fillVideo = fillVideo,
+            sleepTimerMinutes = sleepTimer.minutes,
+            logoHttpRestrictedSourceIds = savedSources.sources.filter { it.logoHttpRestricted }.map { it.id }.toSet()
+        ),
+        SettingsActions(
+            onSelect = ::activateSavedSource,
+            onAdd = { showProviderSheet(it, null) },
+            onEdit = { showProviderSheet(it.config.kind, it) },
+            onRefresh = ::refreshSavedSource,
+            onRemove = ::confirmRemoveSavedSource,
+            onResume = { store.resumeLastChannel = it; renderPortraitContent() },
+            onFillVideo = {
+                fillVideo = it
+                store.fillVideo = it
+                playerView.resizeMode = if (it) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                renderPortraitContent()
+            },
+            onTimer = { sleepTimer.setMinutes(it); renderPortraitContent() }
+        ))
+
+    private fun showProviderSheet(kind: SourceKind, existing: SavedSource?) {
+        ProviderSheet.show(this, kind, existing,
+            onSave = ::saveProviderSource,
+            onPickFile = { name, sourceRecord ->
+                pendingProviderName = name
+                pendingProviderSource = sourceRecord
+                filePicker.launch(arrayOf("*/*"))
+            })
+    }
+
+    private fun saveProviderSource(saved: SavedSource) {
+        try {
+            val old = savedSources.sources.firstOrNull { it.id == saved.id }
+            val configChanged = old != null && old.config != saved.config
+            val normalized = saved.copy(
+                channelCount = if (configChanged) 0 else saved.channelCount,
+                updatedAt = System.currentTimeMillis(),
+                lastChannelId = if (configChanged) null else saved.lastChannelId,
+                logoHttpRestricted = if (configChanged) false else saved.logoHttpRestricted
+            )
+            val records = if (old == null) savedSources.sources + normalized
+                else savedSources.sources.map { if (it.id == normalized.id) normalized else it }
+            val collection = SourceCollection(records, normalized.id)
+            store.saveSources(collection)
+            if (normalized.lastChannelId == null) store.setLastChannel(normalized.id, null)
+            savedSources = collection
+            activeSavedSource = normalized
+            source = normalized.config
+            activeNetwork = null
+            activeNetworkConfig = null
+            activeNetworkSourceId = null
+            selected = null
+            previous = null
+            playback.stop()
+            sleepTimer.cancel()
+            appTab = AppTab.SETTINGS
+            portraitPlayer = false
+            useActiveNetwork(normalized.config)
+            load(normalized.config, false)
+            if (::portraitHost.isInitialized && !isWide()) renderPortraitContent()
+        } catch (e: Exception) {
+            showError(e.message ?: "No se pudo guardar la fuente")
+        }
+    }
+
+    private fun activateSavedSource(saved: SavedSource) {
+        if (saved.id == activeSavedSource?.id) return
+        try {
+            val collection = SourceCollection(savedSources.sources, saved.id)
+            store.saveSources(collection)
+            savedSources = collection
+            activeSavedSource = saved
+            source = saved.config
+            activeNetwork = null
+            activeNetworkConfig = null
+            activeNetworkSourceId = null
+            LogoLoader.clear()
+            playback.stop()
+            selected = null
+            previous = null
+            channels = emptyList()
+            guide = emptyMap()
+            presentations = emptyList()
+            presentationById = emptyMap()
+            portraitPlayer = false
+            load(saved.config, true)
+            if (::portraitHost.isInitialized && !isWide()) renderPortraitContent()
+        } catch (e: Exception) {
+            showError("No se pudo activar la fuente guardada")
+        }
+    }
+
+    private fun refreshSavedSource(saved: SavedSource) {
+        if (saved.id != activeSavedSource?.id) activateSavedSource(saved)
+        else source?.let { load(it, false) }
+    }
+
+    private fun confirmRemoveSavedSource(saved: SavedSource) {
+        ConfirmationDialog.show(this, "Quitar fuente", "Se quitará ${saved.name} de la lista de fuentes.", "Quitar") {
+            if (saved.id == activeSavedSource?.id) {
+                sleepTimer.cancel()
+                removeCurrentSource()
+            } else {
+                try {
+                    savedSources = store.removeSavedSource(saved.id)
+                    activeSavedSource = savedSources.activeSource
+                    if (::portraitHost.isInitialized) renderPortraitContent()
+                } catch (_: Exception) { showError("No se pudo quitar la fuente") }
+            }
+        }
     }
 
     private fun isWide() = resources.configuration.screenWidthDp >= 700 ||
@@ -553,10 +696,12 @@ class MainActivity : ComponentActivity() {
 
     private fun useActiveNetwork(config: SourceConfig?): SafeNetwork {
         requireNotNull(config) { "No hay una fuente activa" }
-        if (activeNetwork == null || activeNetworkConfig != config) {
+        val sourceId = activeSavedSource?.id
+        if (activeNetwork == null || activeNetworkConfig != config || activeNetworkSourceId != sourceId) {
             LogoLoader.clear()
             activeNetwork = SafeNetwork(config)
             activeNetworkConfig = config
+            activeNetworkSourceId = sourceId
         }
         return activeNetwork!!
     }
@@ -564,6 +709,7 @@ class MainActivity : ComponentActivity() {
     private fun removeCurrentSource() {
         val active = activeSavedSource ?: return
         try {
+            sleepTimer.cancel()
             loadGeneration++
             playback.stop()
             savedSources = store.removeSavedSource(active.id)
@@ -571,12 +717,14 @@ class MainActivity : ComponentActivity() {
             source = activeSavedSource?.config
             activeNetwork = null
             activeNetworkConfig = null
+            activeNetworkSourceId = null
             source?.let(::useActiveNetwork)
             channels = emptyList(); guide = emptyMap(); selected = null; previous = null
             now.text = "Selecciona un canal para reproducir"
             if (source == null) {
                 status.text = "Conecta un proveedor o prueba la demo"
                 renderGroups(); renderChannels()
+                if (::portraitHost.isInitialized && !isWide()) renderPortraitContent()
             } else {
                 load(source!!, true)
             }
@@ -611,17 +759,33 @@ class MainActivity : ComponentActivity() {
                     PlaylistParsers.xmltv(network.fetch(config.guideUrl(), 40_000_000))
                 }.getOrDefault(emptyMap()) else emptyMap()
                 val derivedPresentations = buildChannelPresentations(parsed, programmes, System.currentTimeMillis())
+                val blockedLogos = !config.allowHttp && parsed.any { it.logo.startsWith("http://", true) }
                 runOnUiThread {
                     if (generation != loadGeneration) return@runOnUiThread
                     channels = parsed; guide = programmes; loading = false
-                    logoHttpRestricted = !config.allowHttp && parsed.any { it.logo.startsWith("http://", true) }
+                    logoHttpRestricted = blockedLogos
+                    activeSavedSource?.takeIf { it.config == config }?.let { active ->
+                        val refreshed = active.copy(channelCount = parsed.size, updatedAt = System.currentTimeMillis(),
+                            logoHttpRestricted = blockedLogos)
+                        activeSavedSource = refreshed
+                        savedSources = savedSources.copy(sources = savedSources.sources.map { if (it.id == refreshed.id) refreshed else it })
+                        runCatching { store.saveSources(savedSources) }
+                    }
                     presentations = derivedPresentations
                     presentationById = presentations.associateBy { it.channel.id }
                     presentationGeneration++
                     group = "Todos"; renderGroups(); renderChannels()
                     status.text = "${channels.size} canales"
                     val resumeId = if (restore) activeSavedSource?.lastChannelId else selected?.id
-                    resumeId?.let { id -> channels.firstOrNull { it.id == id }?.let { selectChannel(it, openPlayer = false) } }
+                    resumeId?.let { id -> channels.firstOrNull { it.id == id }?.let { channel ->
+                        if (selected?.id == channel.id && playback.currentChannelId == channel.id) {
+                            selected = channel
+                            now.text = channel.name + (currentProgramme(channel)?.let { " · ${it.title}" } ?: "")
+                            status.text = channel.name
+                            renderChannels()
+                        } else selectChannel(channel, openPlayer = false)
+                    } }
+                    if (::portraitHost.isInitialized && appTab == AppTab.SETTINGS && !isWide()) renderPortraitContent()
                 }
             } catch (e: Exception) { runOnUiThread {
                 if (generation == loadGeneration) { loading = false; showError(e.message ?: "Error al cargar canales") }
@@ -651,14 +815,21 @@ class MainActivity : ComponentActivity() {
     }
     private fun openExternal() {
         val c = selected ?: return showError("Selecciona un canal")
-        AlertDialog.Builder(this).setTitle("Abrir en otra app")
-            .setMessage("La URL del canal puede incluir credenciales. La otra app recibirá la URL completa.")
-            .setPositiveButton("Abrir") { _, _ ->
-                try { startActivity(Intent(Intent.ACTION_VIEW).apply { setDataAndType(android.net.Uri.parse(c.url), "video/*") }) }
-                catch (e: Exception) { showError("No hay una app compatible") }
-            }.setNegativeButton("Cancelar", null).show()
+        ConfirmationDialog.show(this, "Abrir en otra app",
+            "La aplicación externa recibirá la dirección completa del canal.", "Abrir") {
+            try { startActivity(Intent(Intent.ACTION_VIEW).apply { setDataAndType(android.net.Uri.parse(c.url), "video/*") }) }
+            catch (_: Exception) { showError("No hay una app compatible") }
+        }
     }
-    private fun showError(message: String) { status.text = message; Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+    private fun showError(message: String) {
+        var safe = message
+        listOfNotNull(source?.address, source?.username, source?.password).filter { it.isNotBlank() }.forEach { secret ->
+            safe = safe.replace(secret, "•••", ignoreCase = false)
+        }
+        safe = safe.replace(Regex("(?i)(username|password)=([^&\\s]+)"), "${'$'}1=•••")
+        if (::status.isInitialized) status.text = safe
+        NoticeView.show(this, safe)
+    }
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (::channelList.isInitialized && channelList.childCount > 0) {
@@ -667,5 +838,11 @@ class MainActivity : ComponentActivity() {
         }
         buildUi()
     }
-    override fun onDestroy() { presentationGeneration++; playback.release(); worker.shutdownNow(); super.onDestroy() }
+    override fun onDestroy() {
+        presentationGeneration++
+        if (::sleepTimer.isInitialized) sleepTimer.cancel()
+        playback.release()
+        worker.shutdownNow()
+        super.onDestroy()
+    }
 }

@@ -125,4 +125,12 @@ class SecureStore(context: Context) {
     var recents: List<String>
         get() = prefs.getString("recents", "")!!.split(',').filter { it.isNotEmpty() }
         set(value) { prefs.edit().putString("recents", value.joinToString(",")).apply() }
+
+    var resumeLastChannel: Boolean
+        get() = prefs.getBoolean("resumeLastChannel", true)
+        set(value) { prefs.edit().putBoolean("resumeLastChannel", value).apply() }
+
+    var fillVideo: Boolean
+        get() = prefs.getBoolean("fillVideo", true)
+        set(value) { prefs.edit().putBoolean("fillVideo", value).apply() }
 }
