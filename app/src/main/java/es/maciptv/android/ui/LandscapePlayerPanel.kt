@@ -84,7 +84,7 @@ class LandscapePlayerPanel(
         programmes.addView(View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) },
             LayoutParams(AndroTheme.dp(context, 1), -1))
         programmes.addView(programmeCell(nextHeading, nextTitle), LayoutParams(0, -1, 1f))
-        addView(programmes, LayoutParams(-1, AndroTheme.dp(context, 88)))
+        addView(programmes, LayoutParams(-1, AndroTheme.dp(context, 64)))
         addView(View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) }, LayoutParams(-1, AndroTheme.dp(context, 2)))
 
         val actionBar = LinearLayout(context).apply { orientation = HORIZONTAL; setBackgroundColor(AndroTheme.BG) }
@@ -126,11 +126,11 @@ class LandscapePlayerPanel(
 
     private fun programmeCell(heading: TextView, title: TextView): View = LinearLayout(context).apply {
         orientation = VERTICAL
-        setPadding(AndroTheme.dp(context, 12), AndroTheme.dp(context, 8), AndroTheme.dp(context, 8), 0)
+        setPadding(AndroTheme.dp(context, 12), AndroTheme.dp(context, 5), AndroTheme.dp(context, 8), 0)
         title.textSize = 13f
-        title.maxLines = 3
+        title.maxLines = 2
         title.ellipsize = TextUtils.TruncateAt.END
-        addView(heading, LayoutParams(-1, AndroTheme.dp(context, 20)))
+        addView(heading, LayoutParams(-1, AndroTheme.dp(context, 16)))
         addView(title, LayoutParams(-1, 0, 1f))
     }
 

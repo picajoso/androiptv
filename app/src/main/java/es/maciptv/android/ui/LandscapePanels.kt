@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import es.maciptv.android.R
 
@@ -33,72 +34,71 @@ data class LandscapeActions(
 object LandscapePanels {
     fun render(context: Context, state: LandscapeUiState, actions: LandscapeActions, playerHost: View): View =
         LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(AndroTheme.BG)
-            val header = LinearLayout(context).apply {
+            val brandHeader = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setBackgroundColor(AndroTheme.ACCENT)
+                setPadding(AndroTheme.dp(context, 12), 0, 0, 0)
             }
-            val brand = text(context, "AndroIPTV", TextStyle.ScreenTitle).apply {
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                setPadding(AndroTheme.dp(context, 16), 0, 0, 0)
-            }
-            header.addView(brand, LinearLayout.LayoutParams(AndroTheme.dp(context, 170), -1))
-            header.addView(View(context).apply { setBackgroundColor(0x99FFFFFF.toInt()) },
-                LinearLayout.LayoutParams(AndroTheme.dp(context, 2), -1))
-            val searchHeader = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(AndroTheme.dp(context, 6), 0, AndroTheme.dp(context, 6), 0)
-                addView(iconButton(context, R.drawable.ic_search, context.getString(R.string.a11y_search),
-                    { state.searchField.requestFocus() }, Color.WHITE))
-                (state.searchField.parent as? android.view.ViewGroup)?.removeView(state.searchField)
-                state.searchField.setTextColor(Color.WHITE)
-                state.searchField.setHintTextColor(0xCCFFFFFF.toInt())
-                state.searchField.textSize = 13f
-                state.searchField.background = null
-                addView(state.searchField, LinearLayout.LayoutParams(0, -1, 1f))
-            }
-            header.addView(searchHeader, LinearLayout.LayoutParams(AndroTheme.dp(context, 250), -1))
-            header.addView(View(context).apply { setBackgroundColor(0x99FFFFFF.toInt()) },
-                LinearLayout.LayoutParams(AndroTheme.dp(context, 2), -1))
-            val sourceHeader = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(AndroTheme.dp(context, 12), 0, AndroTheme.dp(context, 4), 0)
-            }
-            actions.onBack?.let {
-                sourceHeader.addView(iconButton(context, R.drawable.ic_arrow_left, context.getString(R.string.a11y_back), it, Color.WHITE))
-            }
-            sourceHeader.addView(text(context, state.header, TextStyle.Button).apply {
+            brandHeader.addView(text(context, "AndroIPTV", TextStyle.ScreenTitle).apply {
+                textSize = 16f
                 setTextColor(Color.WHITE)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             }, LinearLayout.LayoutParams(0, -1, 1f))
-            sourceHeader.addView(iconButton(context, R.drawable.ic_refresh_cw, context.getString(R.string.a11y_refresh), actions.onRefresh, Color.WHITE))
-            sourceHeader.addView(iconButton(context, R.drawable.ic_settings, context.getString(R.string.a11y_settings), actions.onSettings, Color.WHITE))
-            sourceHeader.addView(iconButton(context, R.drawable.ic_calendar_days, context.getString(R.string.a11y_guide), actions.onGuide, Color.WHITE))
-            header.addView(sourceHeader, LinearLayout.LayoutParams(0, -1, 1f))
-            addView(header, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 44)))
+            val menuButton = iconButton(context, R.drawable.ic_list,
+                "Opciones: Guía, Ajustes y actualizar", {}, Color.WHITE)
+            menuButton.setOnClickListener { anchor ->
+                PopupMenu(context, anchor).apply {
+                    menu.add(0, 1, 0, "Guía")
+                    menu.add(0, 2, 1, "Ajustes")
+                    menu.add(0, 3, 2, "Actualizar lista")
+                    setOnMenuItemClickListener { item ->
+                        when (item.itemId) {
+                            1 -> actions.onGuide()
+                            2 -> actions.onSettings()
+                            3 -> actions.onRefresh()
+                        }
+                        true
+                    }
+                    show()
+                }
+            }
+            brandHeader.addView(menuButton, LinearLayout.LayoutParams(AndroTheme.dp(context, 44), -1))
 
             if (state.screenContent != null) {
                 (state.screenContent.parent as? android.view.ViewGroup)?.removeView(state.screenContent)
-                val contentAndPlayer = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(state.screenContent, LinearLayout.LayoutParams(0, -1, 1f))
-                    addView(View(context).apply { setBackgroundColor(AndroTheme.ACCENT) },
-                        LinearLayout.LayoutParams(AndroTheme.dp(context, 2), -1))
-                    addView(playerHost, LinearLayout.LayoutParams(0, -1, 1f))
+                val contentColumn = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    val screenHeader = LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setBackgroundColor(AndroTheme.ACCENT)
+                        actions.onBack?.let { back ->
+                            addView(iconButton(context, R.drawable.ic_arrow_left,
+                                context.getString(R.string.a11y_back), back, Color.WHITE))
+                        }
+                        addView(text(context, state.header, TextStyle.Button).apply {
+                            setTextColor(Color.WHITE)
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                        }, LinearLayout.LayoutParams(0, -1, 1f))
+                    }
+                    addView(screenHeader, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 44)))
+                    addView(state.screenContent, LinearLayout.LayoutParams(-1, 0, 1f))
                 }
-                addView(contentAndPlayer, LinearLayout.LayoutParams(-1, 0, 1f))
+                addView(contentColumn, LinearLayout.LayoutParams(0, -1, 1f))
+                addView(View(context).apply { setBackgroundColor(AndroTheme.ACCENT) },
+                    LinearLayout.LayoutParams(AndroTheme.dp(context, 2), -1))
+                addView(playerHost, LinearLayout.LayoutParams(0, -1, 1f))
             } else {
-                val columns = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
                 val groupPanel = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     setBackgroundColor(AndroTheme.BG)
                 }
+                groupPanel.addView(brandHeader, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 44)))
                 val groupScroll = ScrollView(context)
                 val groupItems = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
                 state.groups.forEach { item ->
@@ -124,21 +124,35 @@ object LandscapePanels {
                 }
                 groupScroll.addView(groupItems)
                 groupPanel.addView(groupScroll, LinearLayout.LayoutParams(-1, 0, 1f))
-                columns.addView(groupPanel, LinearLayout.LayoutParams(AndroTheme.dp(context, 170), -1))
-                columns.addView(View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) },
+                addView(groupPanel, LinearLayout.LayoutParams(AndroTheme.dp(context, 170), -1))
+                addView(View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) },
                     LinearLayout.LayoutParams(AndroTheme.dp(context, 2), -1))
 
                 val channelPanel = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     setBackgroundColor(AndroTheme.BG)
                 }
+                val searchHeader = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setBackgroundColor(AndroTheme.ACCENT)
+                    setPadding(AndroTheme.dp(context, 6), 0, AndroTheme.dp(context, 6), 0)
+                    addView(iconButton(context, R.drawable.ic_search, context.getString(R.string.a11y_search),
+                        { state.searchField.requestFocus() }, Color.WHITE))
+                    (state.searchField.parent as? android.view.ViewGroup)?.removeView(state.searchField)
+                    state.searchField.setTextColor(Color.WHITE)
+                    state.searchField.setHintTextColor(0xCCFFFFFF.toInt())
+                    state.searchField.textSize = 13f
+                    state.searchField.background = null
+                    addView(state.searchField, LinearLayout.LayoutParams(0, -1, 1f))
+                }
+                channelPanel.addView(searchHeader, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 44)))
                 (state.channelList.parent as? android.view.ViewGroup)?.removeView(state.channelList)
                 channelPanel.addView(state.channelList, LinearLayout.LayoutParams(-1, 0, 1f))
-                columns.addView(channelPanel, LinearLayout.LayoutParams(AndroTheme.dp(context, 250), -1))
-                columns.addView(View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) },
+                addView(channelPanel, LinearLayout.LayoutParams(AndroTheme.dp(context, 250), -1))
+                addView(View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) },
                     LinearLayout.LayoutParams(AndroTheme.dp(context, 2), -1))
-                columns.addView(playerHost, LinearLayout.LayoutParams(0, -1, 1f))
-                addView(columns, LinearLayout.LayoutParams(-1, 0, 1f))
+                addView(playerHost, LinearLayout.LayoutParams(0, -1, 1f))
             }
         }
 }
