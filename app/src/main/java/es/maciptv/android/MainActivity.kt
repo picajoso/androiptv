@@ -1,9 +1,11 @@
 package es.maciptv.android
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.media.AudioManager
 import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -11,6 +13,7 @@ import android.graphics.PixelFormat
 import android.graphics.ColorFilter
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -49,6 +52,13 @@ import es.maciptv.android.ui.LandscapeUiState
 import es.maciptv.android.ui.GroupItem
 import es.maciptv.android.ui.LandscapePlayerActions
 import es.maciptv.android.ui.LandscapePlayerPanel
+import es.maciptv.android.ui.FullscreenActions
+import es.maciptv.android.ui.FullscreenChannelItem
+import es.maciptv.android.ui.FullscreenOverlay
+import es.maciptv.android.ui.FullscreenUiState
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -124,6 +134,8 @@ class MainActivity : ComponentActivity() {
     private var showGroups = true
     private var showChannels = true
     private var fullscreen = false
+    private var fullscreenOverlay: FullscreenOverlay? = null
+    private var savedScreenBrightness: Float? = null
     private var fillVideo = true
     private var loading = false
     private var loadGeneration = 0
@@ -175,6 +187,7 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 landscapePlayerPanel?.updateTimer(0)
                 landscapePlayerPanel?.updatePlaying(false)
+                updateFullscreenState()
                 showError("El temporizador ha pausado la reproducción")
             }
         }
@@ -202,6 +215,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildUi() {
+        if (fullscreen) {
+            buildFullscreenUi()
+            return
+        }
         if (!fullscreen) WindowInsetsControllerCompat(window, window.decorView)
             .show(WindowInsetsCompat.Type.systemBars())
         if (!isWide() && !fullscreen) {
@@ -705,10 +722,124 @@ class MainActivity : ComponentActivity() {
         ViewCompat.requestApplyInsets(root)
     }
     private fun toggleFullscreen() {
+        if (!fullscreen) {
+            savedScreenBrightness = window.attributes.screenBrightness
+        } else {
+            fullscreenOverlay?.dispose()
+            fullscreenOverlay = null
+            restoreScreenBrightness()
+        }
         fullscreen = !fullscreen
         requestedOrientation = if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         buildUi()
+    }
+
+    private fun buildFullscreenUi() {
+        fullscreenOverlay?.dispose()
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK) }
+        status = label(selected?.name ?: "Selecciona un canal")
+        now = label(selected?.name ?: "Selecciona un canal")
+        playerView.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val volumeLevel = audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume
+        val brightnessLevel = if (window.attributes.screenBrightness >= 0f) window.attributes.screenBrightness
+            else runCatching { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f }
+                .getOrDefault(0.5f)
+        val overlay = FullscreenOverlay(this, playerView, FullscreenActions(
+            onExit = ::toggleFullscreen,
+            onToggle = { playback.togglePlayPause(); updateFullscreenState() },
+            onPrevious = { moveFullscreen(-1) },
+            onNext = { moveFullscreen(1) },
+            onFavorite = {
+                selected?.let { channel ->
+                    val favorites = store.favorites.toMutableSet()
+                    if (!favorites.add(channel.id)) favorites.remove(channel.id)
+                    store.favorites = favorites
+                    renderChannels()
+                    updateFullscreenState()
+                }
+            },
+            onTimer = {
+                val minutes = when (sleepTimer.minutes) { 0 -> 30; 30 -> 60; 60 -> 90; else -> 0 }
+                sleepTimer.setMinutes(minutes)
+                updateFullscreenState()
+            },
+            onFit = {
+                fillVideo = !fillVideo
+                store.fillVideo = fillVideo
+                playerView.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                updateFullscreenState()
+            },
+            onLast = {
+                val last = previous?.let { id -> channels.firstOrNull { it.id == id } }
+                if (last == null) showError("No hay un canal anterior") else selectChannel(last, openPlayer = false)
+            },
+            onCast = { showError("Buscando dispositivos…") },
+            onBrightness = { value ->
+                window.attributes = window.attributes.apply { screenBrightness = value.coerceIn(0.01f, 1f) }
+            },
+            onVolume = { value ->
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, (value * maxVolume).toInt().coerceIn(0, maxVolume), 0)
+            },
+            channels = { visibleChannels().map { FullscreenChannelItem(it.id,
+                presentationById[it.id]?.displayName ?: it.name) } },
+            programmeFor = { id -> presentationById[id]?.currentProgramme?.title },
+            onSelectChannel = { id -> channels.firstOrNull { it.id == id }?.let { selectChannel(it, openPlayer = false) } }
+        ), brightnessLevel, volumeLevel)
+        fullscreenOverlay = overlay
+        root.addView(overlay, LinearLayout.LayoutParams(-1, -1))
+        setContentView(root)
+        WindowInsetsControllerCompat(window, root).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+        updateFullscreenState()
+    }
+
+    private fun updateFullscreenState() {
+        val overlay = fullscreenOverlay ?: return
+        val current = selected?.let { presentationById[it.id] }
+        val programme = current?.currentProgramme
+        val time = DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
+        val visible = displayedChannels
+        val index = visible.indexOfFirst { it.id == selected?.id }
+        overlay.update(FullscreenUiState(
+            channelName = current?.displayName ?: selected?.name ?: "Selecciona un canal",
+            quality = current?.quality,
+            programme = programme?.title,
+            previousName = visible.getOrNull(index - 1)?.let { presentationById[it.id]?.displayName ?: it.name },
+            nextName = visible.getOrNull(index + 1)?.let { presentationById[it.id]?.displayName ?: it.name },
+            playing = playback.isPlaying,
+            progressPercent = current?.progressPercent ?: 0,
+            startTime = programme?.let { time.format(Date(it.startMillis)) },
+            endTime = programme?.let { time.format(Date(it.endMillis)) },
+            favorite = selected?.id in store.favorites,
+            timerMinutes = sleepTimer.minutes,
+            fillVideo = fillVideo,
+            groupName = group,
+            selectedId = selected?.id
+        ))
+    }
+
+    private fun moveFullscreen(delta: Int) {
+        val list = visibleChannels()
+        val index = list.indexOfFirst { it.id == selected?.id }
+        val next = index + delta
+        if (next !in list.indices) {
+            showError(if (delta < 0) "Primer canal de la lista" else "Último canal de la lista")
+        } else selectChannel(list[next], openPlayer = false)
+    }
+
+    private fun restoreScreenBrightness() {
+        savedScreenBrightness?.let { original ->
+            window.attributes = window.attributes.apply { screenBrightness = original }
+        }
+        savedScreenBrightness = null
     }
     private fun renderGroups() {
         if (!::groupList.isInitialized) return
@@ -757,6 +888,7 @@ class MainActivity : ComponentActivity() {
             portraitPlayer = true
             renderPortraitContent()
         } else if (!isWide() && !fullscreen && ::portraitHost.isInitialized) renderPortraitContent()
+        if (fullscreen) updateFullscreenState()
     }
     private fun move(delta: Int) {
         val list = visibleChannels()
@@ -786,6 +918,7 @@ class MainActivity : ComponentActivity() {
                         val current = presentationById[channel.id]
                         landscapePlayerPanel?.updateProgrammes(current, current?.let { nextProgramme(it.channel) })
                     }
+                    if (fullscreen) updateFullscreenState()
                 }
             }
         }
@@ -1000,6 +1133,8 @@ class MainActivity : ComponentActivity() {
     }
     override fun onDestroy() {
         presentationGeneration++
+        fullscreenOverlay?.dispose()
+        restoreScreenBrightness()
         if (::sleepTimer.isInitialized) sleepTimer.cancel()
         playback.release()
         worker.shutdownNow()

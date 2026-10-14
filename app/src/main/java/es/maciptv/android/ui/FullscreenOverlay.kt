@@ -136,7 +136,7 @@ class FullscreenOverlay(
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), 0, dp(8), 0)
             val firstLine = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            firstLine.addView(channelTitle, LinearLayout.LayoutParams(-2, -1))
+            firstLine.addView(channelTitle, LinearLayout.LayoutParams(0, -1, 1f))
             qualityLabel.apply {
                 setPadding(dp(5), 0, dp(5), 0)
                 setBackgroundColor(0x30FFFFFF)
