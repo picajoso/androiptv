@@ -1,0 +1,19 @@
+<resources>
+    <string name="a11y_search">Buscar</string>
+    <string name="a11y_close">Cerrar</string>
+    <string name="a11y_favorite">Cambiar favorito</string>
+    <string name="a11y_play">Reproducir</string>
+    <string name="a11y_pause">Pausar</string>
+    <string name="a11y_fullscreen">Pantalla completa</string>
+    <string name="a11y_back">Volver</string>
+    <string name="a11y_previous">Canal anterior</string>
+    <string name="a11y_next">Canal siguiente</string>
+    <string name="a11y_guide">Guía</string>
+    <string name="a11y_settings">Ajustes</string>
+    <string name="a11y_refresh">Actualizar</string>
+    <string name="a11y_remove_source">Quitar fuente</string>
+    <string name="a11y_open_external">Abrir fuera</string>
+    <string name="a11y_channels">Canales</string>
+    <string name="a11y_history">Recientes</string>
+    <string name="a11y_fit_mode">Cambiar ajuste de imagen</string>
+</resources>

@@ -120,10 +120,8 @@ Commit the parser/presentation implementation and focused MainActivity wiring.
 ### Task 3: Design resources and reusable UI primitives
 
 **Files:**
-- Create: `app/src/main/res/font/archivo_regular.ttf`
-- Create: `app/src/main/res/font/archivo_semibold.ttf`
-- Create: `app/src/main/res/font/archivo_extrabold.ttf`
-- Create: `app/src/main/res/font/OFL.txt`
+- Create: `app/src/main/res/font/archivo_variable.ttf` (Archivo variable font; apply weights 400, 600, and 800 in view styles)
+- Create: `app/src/main/assets/fonts/Archivo-OFL.txt`
 - Create: used icon vector drawables under `app/src/main/res/drawable/`
 - Create: `app/src/main/res/values/strings.xml`
 - Create: `app/src/main/java/es/maciptv/android/ui/Theme.kt`
