@@ -4,7 +4,9 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
 import java.security.KeyStore
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -13,6 +15,14 @@ import javax.crypto.spec.GCMParameterSpec
 class SecureStore(context: Context) {
     private val prefs = context.getSharedPreferences("androiptv", Context.MODE_PRIVATE)
     private val alias = "androiptv.source.v1"
+
+    companion object {
+        private const val SOURCE_COLLECTION_KEY = "sources.v2"
+        private const val LEGACY_SOURCE_KEY = "source"
+        private const val LEGACY_LAST_CHANNEL_KEY = "last"
+        private const val SOURCE_LAST_CHANNEL_PREFIX = "last."
+    }
+
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
@@ -22,21 +32,93 @@ class SecureStore(context: Context) {
                 .setUserAuthenticationRequired(false).build())
         }.generateKey()
     }
-    fun saveSource(source: SourceConfig) {
+    private fun encrypt(rawText: String): String {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        prefs.edit().putString("source", Base64.encodeToString(cipher.iv + cipher.doFinal(source.toJson().toByteArray()), Base64.NO_WRAP)).apply()
+        return Base64.encodeToString(cipher.iv + cipher.doFinal(rawText.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }
-    fun loadSource(): SourceConfig? {
-        val raw = Base64.decode(prefs.getString("source", null) ?: return null, Base64.NO_WRAP)
+
+    private fun decrypt(encoded: String): String {
+        val raw = Base64.decode(encoded, Base64.NO_WRAP)
+        if (raw.size < 12 + 16) throw IOException("Configuración guardada no válida")
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
-        return SourceConfig.fromJson(String(cipher.doFinal(raw.copyOfRange(12, raw.size))))
+        return String(cipher.doFinal(raw.copyOfRange(12, raw.size)), Charsets.UTF_8)
     }
-    fun removeSource() { prefs.edit().remove("source").remove("last").apply() }
-    var lastChannel: String?
-        get() = prefs.getString("last", null)
-        set(value) { prefs.edit().putString("last", value).apply() }
+
+    fun loadSources(): SourceCollection {
+        val current = prefs.getString(SOURCE_COLLECTION_KEY, null)
+        if (current != null) {
+            val collection = SourceCollection.fromJson(decrypt(current))
+            clearVerifiedLegacySource()
+            return withLastChannelOverrides(collection)
+        }
+
+        val legacy = prefs.getString(LEGACY_SOURCE_KEY, null) ?: return SourceCollection(emptyList(), null)
+        val legacyConfig = SourceConfig.fromJson(decrypt(legacy))
+        val imported = SavedSource(
+            id = UUID.randomUUID().toString(),
+            name = "Mi lista",
+            config = legacyConfig,
+            updatedAt = System.currentTimeMillis(),
+            lastChannelId = prefs.getString(LEGACY_LAST_CHANNEL_KEY, null)
+        )
+        val migrated = SourceCollection(listOf(imported), imported.id)
+
+        // The legacy keys are removed only after the replacement has been committed and read back.
+        saveSources(migrated)
+        clearVerifiedLegacySource()
+        return migrated
+    }
+
+    fun saveSources(collection: SourceCollection) {
+        val activeId = collection.activeSourceId?.takeIf { id -> collection.sources.any { it.id == id } }
+            ?: collection.sources.firstOrNull()?.id
+        val normalized = collection.copy(activeSourceId = activeId)
+        val encrypted = encrypt(normalized.toJson())
+        if (!prefs.edit().putString(SOURCE_COLLECTION_KEY, encrypted).commit()) {
+            throw IOException("No se pudo guardar la lista de fuentes")
+        }
+        val stored = prefs.getString(SOURCE_COLLECTION_KEY, null)
+            ?: throw IOException("No se pudo comprobar la lista de fuentes guardada")
+        val decoded = SourceCollection.fromJson(decrypt(stored))
+        if (decoded != normalized) throw IOException("No se pudo comprobar la lista de fuentes guardada")
+    }
+
+    fun removeSavedSource(sourceId: String): SourceCollection {
+        val collection = loadSources()
+        if (collection.sources.none { it.id == sourceId }) return collection
+        val remaining = collection.sources.filterNot { it.id == sourceId }
+        val nextActiveId = if (collection.activeSourceId == sourceId) remaining.firstOrNull()?.id else collection.activeSourceId
+        val updated = SourceCollection(remaining, nextActiveId)
+        saveSources(updated)
+        prefs.edit().remove(sourceLastChannelKey(sourceId)).commit()
+        return updated
+    }
+
+    fun setLastChannel(sourceId: String, channelId: String?) {
+        val editor = prefs.edit()
+        // Empty string is a tombstone so an intentionally cleared legacy value cannot reappear.
+        editor.putString(sourceLastChannelKey(sourceId), channelId ?: "").apply()
+    }
+
+    private fun withLastChannelOverrides(collection: SourceCollection): SourceCollection = collection.copy(
+        sources = collection.sources.map { saved ->
+            val key = sourceLastChannelKey(saved.id)
+            if (prefs.contains(key)) saved.copy(lastChannelId = prefs.getString(key, null)?.takeIf { it.isNotEmpty() })
+            else saved
+        }
+    )
+
+    private fun sourceLastChannelKey(sourceId: String) = "$SOURCE_LAST_CHANNEL_PREFIX$sourceId"
+
+    private fun clearVerifiedLegacySource() {
+        if (prefs.contains(LEGACY_SOURCE_KEY)) {
+            // The caller has already decrypted, or just wrote and verified, the new collection.
+            prefs.edit().remove(LEGACY_SOURCE_KEY).remove(LEGACY_LAST_CHANNEL_KEY).commit()
+        }
+    }
+
     var favorites: Set<String>
         get() = prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()
         set(value) { prefs.edit().putStringSet("favorites", value.toSet()).apply() }

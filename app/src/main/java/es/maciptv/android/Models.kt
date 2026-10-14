@@ -6,6 +6,56 @@ import java.security.MessageDigest
 
 enum class SourceKind { M3U_URL, M3U_FILE, XTREAM, DEMO }
 
+data class SavedSource(
+    val id: String,
+    val name: String,
+    val config: SourceConfig,
+    val channelCount: Int = 0,
+    val updatedAt: Long = 0L,
+    val lastChannelId: String? = null
+) {
+    fun toJson() = JSONObject()
+        .put("id", id)
+        .put("name", name)
+        .put("config", JSONObject(config.toJson()))
+        .put("channelCount", channelCount)
+        .put("updatedAt", updatedAt)
+        .put("lastChannelId", lastChannelId)
+
+    companion object {
+        fun fromJson(value: JSONObject) = SavedSource(
+            id = value.getString("id"),
+            name = value.getString("name"),
+            config = SourceConfig.fromJson(value.getJSONObject("config").toString()),
+            channelCount = value.optInt("channelCount"),
+            updatedAt = value.optLong("updatedAt"),
+            lastChannelId = value.optString("lastChannelId").takeUnless { it.isBlank() || it == "null" }
+        )
+    }
+}
+
+data class SourceCollection(val sources: List<SavedSource>, val activeSourceId: String?) {
+    val activeSource: SavedSource? get() = sources.firstOrNull { it.id == activeSourceId }
+
+    fun toJson(): String {
+        val entries = org.json.JSONArray()
+        sources.forEach { entries.put(it.toJson()) }
+        return JSONObject().put("sources", entries).put("activeSourceId", activeSourceId).toString()
+    }
+
+    companion object {
+        fun fromJson(raw: String): SourceCollection {
+            val value = JSONObject(raw)
+            val entries = value.getJSONArray("sources")
+            val sources = List(entries.length()) { index -> SavedSource.fromJson(entries.getJSONObject(index)) }
+            val requestedActiveId = value.optString("activeSourceId").takeUnless { it.isBlank() || it == "null" }
+            val activeId = requestedActiveId?.takeIf { id -> sources.any { it.id == id } }
+                ?: sources.firstOrNull()?.id
+            return SourceCollection(sources, activeId)
+        }
+    }
+}
+
 data class SourceConfig(val kind: SourceKind, val address: String = "", val username: String = "",
     val password: String = "", val xmltv: String = "", val allowHttp: Boolean = false,
     val localServer: Boolean = false) {

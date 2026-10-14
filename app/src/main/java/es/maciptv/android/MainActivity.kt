@@ -19,6 +19,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.concurrent.Executors
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SecureStore
@@ -73,6 +74,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var search: EditText
     private val worker = Executors.newSingleThreadExecutor()
     private var source: SourceConfig? = null
+    private var savedSources = SourceCollection(emptyList(), null)
+    private var activeSavedSource: SavedSource? = null
+    private var activeNetwork: SafeNetwork? = null
+    private var activeNetworkConfig: SourceConfig? = null
     private var channels: List<Channel> = emptyList()
     private var guide: Map<String, List<Programme>> = emptyMap()
     private var selected: Channel? = null
@@ -115,7 +120,10 @@ class MainActivity : ComponentActivity() {
         })
         buildUi()
         try {
-            source = store.loadSource()
+            savedSources = store.loadSources()
+            activeSavedSource = savedSources.activeSource
+            source = activeSavedSource?.config
+            source?.let(::useActiveNetwork)
             source?.let { load(it, true) }
         } catch (e: Exception) { showError("No se pudo abrir la fuente guardada: ${e.message}") }
     }
@@ -261,10 +269,15 @@ class MainActivity : ComponentActivity() {
         val config = source ?: return
         if (selected?.id != c.id) previous = selected?.id
         selected = c
-        store.lastChannel = c.id
+        activeSavedSource?.let { active ->
+            store.setLastChannel(active.id, c.id)
+            val updated = active.copy(lastChannelId = c.id)
+            activeSavedSource = updated
+            savedSources = savedSources.copy(sources = savedSources.sources.map { if (it.id == updated.id) updated else it })
+        }
         store.recents = (listOf(c.id) + store.recents.filterNot { it == c.id }).take(30)
         now.text = c.name + (currentProgramme(c)?.let { " · ${it.title}" } ?: "")
-        playback.play(c, config)
+        playback.play(c, config, useActiveNetwork(config))
         status.text = c.name
         renderChannels()
     }
@@ -286,11 +299,7 @@ class MainActivity : ComponentActivity() {
                 2 -> editSource(SourceKind.XTREAM)
                 3 -> setSource(SourceConfig(SourceKind.DEMO))
                 4 -> AlertDialog.Builder(this).setTitle("Quitar fuente").setMessage("Se eliminará la fuente guardada")
-                    .setPositiveButton("Quitar") { _, _ ->
-                        loadGeneration++; store.removeSource(); source = null; channels = emptyList(); guide = emptyMap()
-                        selected = null; previous = null; playback.stop(); now.text = "Selecciona un canal para reproducir"
-                        status.text = "Conecta un proveedor o prueba la demo"; renderGroups(); renderChannels()
-                    }
+                    .setPositiveButton("Quitar") { _, _ -> removeCurrentSource() }
                     .setNegativeButton("Cancelar", null).show()
             }
         }.show()
@@ -317,14 +326,68 @@ class MainActivity : ComponentActivity() {
     }
     private fun setSource(config: SourceConfig) {
         try {
-            store.saveSource(config); source = config; store.lastChannel = null
+            val existing = activeSavedSource
+            val saved = if (existing == null) {
+                SavedSource(UUID.randomUUID().toString(), "Mi lista", config, updatedAt = System.currentTimeMillis())
+            } else {
+                existing.copy(
+                    config = config,
+                    channelCount = 0,
+                    updatedAt = System.currentTimeMillis(),
+                    lastChannelId = if (existing.config == config) existing.lastChannelId else null
+                )
+            }
+            val records = if (existing == null) savedSources.sources + saved
+                else savedSources.sources.map { if (it.id == existing.id) saved else it }
+            val updated = SourceCollection(records, saved.id)
+            store.saveSources(updated)
+            if (saved.lastChannelId == null) store.setLastChannel(saved.id, null)
+            savedSources = updated
+            activeSavedSource = saved
+            source = config
+            useActiveNetwork(config)
             selected = null; previous = null; playback.stop(); now.text = "Selecciona un canal para reproducir"
             load(config, false)
         }
         catch (e: Exception) { showError(e.message ?: "No se pudo guardar la fuente") }
     }
+
+    private fun useActiveNetwork(config: SourceConfig?): SafeNetwork {
+        requireNotNull(config) { "No hay una fuente activa" }
+        if (activeNetwork == null || activeNetworkConfig != config) {
+            activeNetwork = SafeNetwork(config)
+            activeNetworkConfig = config
+        }
+        return activeNetwork!!
+    }
+
+    private fun removeCurrentSource() {
+        val active = activeSavedSource ?: return
+        try {
+            loadGeneration++
+            playback.stop()
+            savedSources = store.removeSavedSource(active.id)
+            activeSavedSource = savedSources.activeSource
+            source = activeSavedSource?.config
+            activeNetwork = null
+            activeNetworkConfig = null
+            source?.let(::useActiveNetwork)
+            channels = emptyList(); guide = emptyMap(); selected = null; previous = null
+            now.text = "Selecciona un canal para reproducir"
+            if (source == null) {
+                status.text = "Conecta un proveedor o prueba la demo"
+                renderGroups(); renderChannels()
+            } else {
+                load(source!!, true)
+            }
+        } catch (e: Exception) {
+            showError(e.message ?: "No se pudo quitar la fuente")
+        }
+    }
+
     private fun load(config: SourceConfig, restore: Boolean) {
         val generation = ++loadGeneration
+        val network = useActiveNetwork(config)
         loading = true; status.text = "Cargando canales…"
         worker.execute {
             try {
@@ -342,17 +405,17 @@ class MainActivity : ComponentActivity() {
                         }
                         PlaylistParsers.m3u(output.toByteArray())
                     }
-                    else -> PlaylistParsers.m3u(SafeNetwork(config).fetch(config.playlistUrl(), 8_000_000), config.playlistUrl())
+                    else -> PlaylistParsers.m3u(network.fetch(config.playlistUrl(), 8_000_000), config.playlistUrl())
                 }
                 val programmes = if (config.kind == SourceKind.DEMO) DemoContent.guide() else if (config.guideUrl().isNotBlank()) runCatching {
-                    PlaylistParsers.xmltv(SafeNetwork(config).fetch(config.guideUrl(), 40_000_000))
+                    PlaylistParsers.xmltv(network.fetch(config.guideUrl(), 40_000_000))
                 }.getOrDefault(emptyMap()) else emptyMap()
                 runOnUiThread {
                     if (generation != loadGeneration) return@runOnUiThread
                     channels = parsed; guide = programmes; loading = false
                     group = "Todos"; renderGroups(); renderChannels()
                     status.text = "${channels.size} canales"
-                    val resumeId = if (restore) store.lastChannel else selected?.id
+                    val resumeId = if (restore) activeSavedSource?.lastChannelId else selected?.id
                     resumeId?.let { id -> channels.firstOrNull { it.id == id }?.let(::selectChannel) }
                 }
             } catch (e: Exception) { runOnUiThread {
