@@ -5,6 +5,11 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.ColorFilter
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -42,7 +47,8 @@ import es.maciptv.android.ui.LandscapeActions
 import es.maciptv.android.ui.LandscapePanels
 import es.maciptv.android.ui.LandscapeUiState
 import es.maciptv.android.ui.GroupItem
-import es.maciptv.android.ui.PlaybackControls
+import es.maciptv.android.ui.LandscapePlayerActions
+import es.maciptv.android.ui.LandscapePlayerPanel
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -89,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     if (!next.add(channel.id)) next.remove(channel.id)
                     store.favorites = next
                     renderChannels()
+                    if (isWide() && !fullscreen) buildLandscapeUi()
                 },
                 onHttpBlocked = { /* surfaced in source settings */ }
             )
@@ -98,6 +105,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var now: TextView
     private lateinit var search: EditText
+    private var landscapePlayerPanel: LandscapePlayerPanel? = null
     private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
     private var source: SourceConfig? = null
     private var savedSources = SourceCollection(emptyList(), null)
@@ -164,7 +172,11 @@ class MainActivity : ComponentActivity() {
         playback = PlaybackController(this, playerView)
         sleepTimer = SleepTimer {
             playback.pause()
-            runOnUiThread { showError("El temporizador ha pausado la reproducción") }
+            runOnUiThread {
+                landscapePlayerPanel?.updateTimer(0)
+                landscapePlayerPanel?.updatePlaying(false)
+                showError("El temporizador ha pausado la reproducción")
+            }
         }
         playback.onError = { message -> runOnUiThread { showError(message) } }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -190,6 +202,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildUi() {
+        if (!fullscreen) WindowInsetsControllerCompat(window, window.decorView)
+            .show(WindowInsetsCompat.Type.systemBars())
         if (!isWide() && !fullscreen) {
             buildPortraitUi()
             return
@@ -286,6 +300,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildPortraitUi() {
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
         val oldSearch = if (::search.isInitialized) search.text.toString() else ""
         if (!::search.isInitialized) {
             search = EditText(this).apply {
@@ -317,6 +332,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildLandscapeUi() {
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
+        if (::channelList.isInitialized && channelList.childCount > 0) {
+            channelListScrollPosition = channelList.firstVisiblePosition
+            channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
+        }
         val oldSearch = if (::search.isInitialized) search.text.toString() else ""
         search = EditText(this).apply {
             hint = "Buscar canales o grupos"
@@ -336,37 +356,37 @@ class MainActivity : ComponentActivity() {
             divider = android.graphics.drawable.ColorDrawable(AndroTheme.DIVIDER)
             setBackgroundColor(Color.TRANSPARENT)
         }
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(AndroTheme.BG) }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = LandscapeInsetBackground() }
         status = label(if (channels.isEmpty()) "Conecta un proveedor o prueba la demo" else "${channels.size} canales")
         now = label(selected?.name ?: "Selecciona un canal")
-        val playerHost = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
-            val frame = FrameLayout(this@MainActivity).apply { setBackgroundColor(Color.BLACK) }
-            (playerView.parent as? ViewGroup)?.removeView(playerView)
-            playerView.useController = false
-            frame.addView(playerView, FrameLayout.LayoutParams(-1, -1))
-            addView(frame, LinearLayout.LayoutParams(-1, 0, 1f))
-            val selectedPresentation = selected?.let { presentationById[it.id] }
-            addView(textViewForLandscape(selectedPresentation?.let { "AHORA · ${it.currentProgramme?.title ?: "En directo"}" } ?: "Selecciona un canal"),
-                LinearLayout.LayoutParams(-1, dp(44)))
-            val next = selectedPresentation?.let { nextProgramme(it.channel) }
-            addView(textViewForLandscape(next?.let { "DESPUÉS · ${it.title}" } ?: "Sin información siguiente"),
-                LinearLayout.LayoutParams(-1, dp(36)))
-            addView(PlaybackControls.programmeProgress(this@MainActivity, selectedPresentation?.progressPercent),
-                LinearLayout.LayoutParams(-1, dp(3)))
-            addView(PlaybackControls.transport(this@MainActivity, playback.isPlaying, {
-                playback.togglePlayPause(); buildLandscapeUi()
-            }, { move(-1) }, { move(1) }, ::toggleFullscreen, tintColor = Color.WHITE), LinearLayout.LayoutParams(-1, dp(52)))
-            val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-            actions.addView(button(if (fillVideo) "Sin recortar" else "Rellenar") {
-                fillVideo = !fillVideo; store.fillVideo = fillVideo
-                playerView.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
-                buildLandscapeUi()
-            })
-            actions.addView(button("Abrir fuera") { openExternal() })
-            addView(actions, LinearLayout.LayoutParams(-1, dp(48)))
-        }
+        playerView.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+        val playerHost = LandscapePlayerPanel(this, playerView, LandscapePlayerActions(
+            onToggle = { playback.togglePlayPause(); landscapePlayerPanel?.updatePlaying(playback.isPlaying) },
+            onPrevious = { move(-1) },
+            onNext = { move(1) },
+            onFullscreen = ::toggleFullscreen,
+            onFavorite = {
+                selected?.let { channel ->
+                    val favorites = store.favorites.toMutableSet()
+                    if (!favorites.add(channel.id)) favorites.remove(channel.id)
+                    store.favorites = favorites
+                    renderChannels()
+                    buildLandscapeUi()
+                }
+            },
+            onTimer = {
+                val nextMinutes = when (sleepTimer.minutes) { 0 -> 30; 30 -> 60; 60 -> 90; else -> 0 }
+                sleepTimer.setMinutes(nextMinutes)
+                landscapePlayerPanel?.updateTimer(nextMinutes)
+            },
+            onExternal = ::openExternal
+        ))
+        landscapePlayerPanel = playerHost
+        val selectedPresentation = selected?.let { presentationById[it.id] }
+        playerHost.updateProgrammes(selectedPresentation, selectedPresentation?.let { nextProgramme(it.channel) })
+        playerHost.updatePlaying(playback.isPlaying)
+        playerHost.updateFavorite(selected?.id in store.favorites)
+        playerHost.updateTimer(sleepTimer.minutes)
         val content = when (appTab) {
             AppTab.SETTINGS -> renderSettings()
             AppTab.GUIDE -> createGuideScreen()
@@ -384,12 +404,12 @@ class MainActivity : ComponentActivity() {
                     buildLandscapeUi()
                 },
                 onGuide = { appTab = if (appTab == AppTab.GUIDE) AppTab.CHANNELS else AppTab.GUIDE; buildLandscapeUi() },
-                onFullscreen = ::toggleFullscreen,
                 onBack = if (appTab == AppTab.CHANNELS) null else ({ appTab = AppTab.CHANNELS; buildLandscapeUi() })
             ), playerHost), LinearLayout.LayoutParams(-1, -1))
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            (view.background as? LandscapeInsetBackground)?.topInset = bars.top
             view.setPadding(0, bars.top, 0, bars.bottom)
             insets
         }
@@ -398,14 +418,6 @@ class MainActivity : ComponentActivity() {
             channelList.setSelectionFromTop(channelListScrollPosition, channelListScrollOffset)
         }
         renderChannels()
-    }
-
-    private fun textViewForLandscape(value: String) = TextView(this).apply {
-        text = value
-        setTextColor(Color.WHITE)
-        textSize = 12f
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(12), 0, dp(8), 0)
     }
 
     private fun createLandscapeGroups(): List<GroupItem> {
@@ -561,15 +573,19 @@ class MainActivity : ComponentActivity() {
             onEdit = { showProviderSheet(it.config.kind, it) },
             onRefresh = ::refreshSavedSource,
             onRemove = ::confirmRemoveSavedSource,
-            onResume = { store.resumeLastChannel = it; renderPortraitContent() },
+            onResume = { store.resumeLastChannel = it; refreshSettingsScreen() },
             onFillVideo = {
                 fillVideo = it
                 store.fillVideo = it
                 playerView.resizeMode = if (it) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
-                renderPortraitContent()
+                refreshSettingsScreen()
             },
-            onTimer = { sleepTimer.setMinutes(it); renderPortraitContent() }
+            onTimer = { sleepTimer.setMinutes(it); refreshSettingsScreen() }
         ))
+
+    private fun refreshSettingsScreen() {
+        if (isWide() && !fullscreen) buildLandscapeUi() else renderPortraitContent()
+    }
 
     private fun showProviderSheet(kind: SourceKind, existing: SavedSource?) {
         ProviderSheet.show(this, kind, existing,
@@ -690,9 +706,9 @@ class MainActivity : ComponentActivity() {
     }
     private fun toggleFullscreen() {
         fullscreen = !fullscreen
-        if (isWide() && ::topBar.isInitialized && ::groupsView.isInitialized) renderPanels()
         requestedOrientation = if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        buildUi()
     }
     private fun renderGroups() {
         if (!::groupList.isInitialized) return
@@ -735,6 +751,7 @@ class MainActivity : ComponentActivity() {
         playback.play(c, config, useActiveNetwork(config))
         status.text = c.name
         renderChannels()
+        if (isWide() && !fullscreen) buildLandscapeUi()
         if (!isWide() && !fullscreen && openPlayer) {
             appTab = AppTab.CHANNELS
             portraitPlayer = true
@@ -765,6 +782,10 @@ class MainActivity : ComponentActivity() {
                         now.text = selectedChannel.name + (currentProgramme(selectedChannel)?.let { " · ${it.title}" } ?: "")
                     }
                     renderChannels()
+                    selected?.let { channel ->
+                        val current = presentationById[channel.id]
+                        landscapePlayerPanel?.updateProgrammes(current, current?.let { nextProgramme(it.channel) })
+                    }
                 }
             }
         }
@@ -923,7 +944,8 @@ class MainActivity : ComponentActivity() {
                             renderChannels()
                         } else selectChannel(channel, openPlayer = false)
                     } }
-                    if (::portraitHost.isInitialized && appTab == AppTab.SETTINGS && !isWide()) renderPortraitContent()
+                    if (isWide() && !fullscreen) buildLandscapeUi()
+                    else if (::portraitHost.isInitialized && appTab == AppTab.SETTINGS) renderPortraitContent()
                 }
             } catch (e: Exception) { runOnUiThread {
                 if (generation == loadGeneration) { loading = false; showError(e.message ?: "Error al cargar canales") }
@@ -983,4 +1005,22 @@ class MainActivity : ComponentActivity() {
         worker.shutdownNow()
         super.onDestroy()
     }
+}
+
+private class LandscapeInsetBackground : Drawable() {
+    private val paint = Paint()
+    var topInset: Int = 0
+        set(value) { field = value; invalidateSelf() }
+
+    override fun draw(canvas: Canvas) {
+        paint.color = AndroTheme.BG
+        canvas.drawRect(bounds, paint)
+        paint.color = AndroTheme.ACCENT
+        canvas.drawRect(0f, 0f, bounds.width().toFloat(), topInset.toFloat(), paint)
+    }
+
+    override fun setAlpha(alpha: Int) = Unit
+    override fun setColorFilter(colorFilter: ColorFilter?) = Unit
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getOpacity(): Int = PixelFormat.OPAQUE
 }

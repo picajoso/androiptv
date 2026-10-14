@@ -7,6 +7,7 @@ import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.LayerDrawable
 import android.view.Gravity
 import android.view.View
+import android.text.TextUtils
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -25,6 +26,9 @@ class ChannelRow(context: Context) : LinearLayout(context) {
     private val progress = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal)
     private val favorite = ImageButton(context)
     private val metadata = text(context, "", TextStyle.Metadata)
+    private val textColumn = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER_VERTICAL }
+    private val titleRow = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    private val progressRow = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
 
     init {
         orientation = HORIZONTAL
@@ -32,13 +36,14 @@ class ChannelRow(context: Context) : LinearLayout(context) {
         setPadding(AndroTheme.dp(context, 16), AndroTheme.dp(context, 4), AndroTheme.dp(context, 10), AndroTheme.dp(context, 4))
         logo.scaleType = ImageView.ScaleType.FIT_CENTER
         addView(logo, LayoutParams(AndroTheme.dp(context, 52), AndroTheme.dp(context, 52)))
-        val textColumn = LinearLayout(context).apply { orientation = VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        val titleRow = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        name.maxLines = 1
+        name.ellipsize = TextUtils.TruncateAt.END
+        programme.maxLines = 1
+        programme.ellipsize = TextUtils.TruncateAt.END
         titleRow.addView(name, LayoutParams(0, AndroTheme.dp(context, 22), 1f))
         titleRow.addView(metadata, LayoutParams(-2, AndroTheme.dp(context, 22)))
         textColumn.addView(titleRow, LayoutParams(-1, AndroTheme.dp(context, 22)))
         textColumn.addView(programme, LayoutParams(-1, AndroTheme.dp(context, 18)))
-        val progressRow = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         progress.max = 100
         progress.progressDrawable = LayerDrawable(arrayOf(
             GradientDrawable().apply { setColor(AndroTheme.NEUTRAL_300); cornerRadius = 0f },
@@ -71,6 +76,14 @@ class ChannelRow(context: Context) : LinearLayout(context) {
         onHttpBlocked: () -> Unit
     ) {
         val logoSize = if (landscape) 38 else 52
+        setPadding(AndroTheme.dp(context, if (landscape) 8 else 16), AndroTheme.dp(context, 4),
+            AndroTheme.dp(context, if (landscape) 4 else 10), AndroTheme.dp(context, 4))
+        minimumHeight = AndroTheme.dp(context, if (landscape) 54 else 68)
+        name.textSize = if (landscape) 13f else TextStyle.ChannelName.sp
+        programme.textSize = if (landscape) 11f else TextStyle.Metadata.sp
+        metadata.visibility = if (landscape) View.GONE else View.VISIBLE
+        progressRow.visibility = if (landscape) View.GONE else View.VISIBLE
+        (textColumn.layoutParams as LayoutParams).marginStart = AndroTheme.dp(context, if (landscape) 8 else 12)
         val lp = logo.layoutParams
         lp.width = AndroTheme.dp(context, logoSize)
         lp.height = AndroTheme.dp(context, logoSize)
@@ -80,6 +93,7 @@ class ChannelRow(context: Context) : LinearLayout(context) {
         metadata.text = tags
         val current = item.currentProgramme
         programme.text = current?.title.orEmpty()
+        programme.visibility = if (landscape && current == null) View.GONE else View.VISIBLE
         progress.progress = item.progressPercent ?: 0
         progress.visibility = if (current == null) View.INVISIBLE else View.VISIBLE
         endLabel.text = item.programmeEndLabel.orEmpty()

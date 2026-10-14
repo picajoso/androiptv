@@ -14,12 +14,12 @@ Este repositorio contiene el proyecto Android, separado del proyecto macOS MacIP
 
 - Proyecto Android independiente, paquete `es.maciptv.android`, versión `0.1.0`.
 - Compila con `assembleDebug`; el APK de desarrollo está en `app/build/outputs/apk/debug/app-debug.apk`.
-- En sesiones anteriores se usó el AVD `Medium_Phone_API_37.0` para comprobar reproducción. En la sesión de la Fase 1, ADB informó el emulador como `offline`, así que los cambios recientes no tuvieron revisión manual en pantalla.
+- En el AVD `Medium_Phone_API_37.0` se revisaron Canales en vertical y apaisado, logos, reproducción y entrada/salida de pantalla completa. El emulador se conectó tras un arranque limpio sin cargar el snapshot; para mantenerlo abierto entre turnos se lanzó con `launchctl`.
 - No copies aquí direcciones, usuario, contraseña ni URLs de canales de fuentes reales: pueden incluir credenciales.
 - La pantalla completa provisional fuerza apaisado, oculta barras del sistema y paneles, muestra el controlador Media3 y ofrece ajuste para ver la imagen completa o rellenar la pantalla.
 - La Fase 1 añade almacenamiento cifrado de varias fuentes, presentación de nombre y guía por día, tema y controles propios, logos seguros con fallback a iniciales, pantallas adaptables vertical/apaisado, ajustes, temporizador de apagado y controlador Media3 en pantalla completa provisional.
 - Una lista grande llegó a provocar `OutOfMemoryError` porque se creaba una vista Android por cada canal. La lista se cambió a `ListView` con `BaseAdapter`, que crea y reutiliza filas visibles. No volver a materializar todos los canales en vistas individuales.
-- Una compilación anterior incluyó el modo pantalla completa y la lista virtualizada. La rotación y el ajuste de imagen requieren nueva revisión manual junto con la Fase 1.
+- La vista apaisada sigue la rejilla de referencia: búsqueda en la cabecera, grupos con recuentos, filas compactas, vídeo con controles superpuestos, programa actual/siguiente y cinco acciones inferiores. Se verificó que al salir de pantalla completa regresan los paneles y las barras del sistema mientras el vídeo sigue avanzando. La rotación física, Guía, Ajustes y migración de fuentes aún requieren revisión manual completa.
 
 El emulador puede desconectarse de ADB o cerrarse; eso no equivale por sí solo a un fallo de la app. Comprueba `adb devices` y el proceso antes de atribuirle un cierre. El emulador API 37 también produjo una traza nativa transitoria de `MediaCodec`; en otra ocasión el evento fue un `OutOfMemoryError` de la UI. La virtualización de filas corrigió esta segunda causa.
 

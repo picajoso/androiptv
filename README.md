@@ -22,4 +22,4 @@ La guía XMLTV es opcional para M3U. En Xtream se obtiene automáticamente del p
 
 ## Estado de esta versión
 
-La Fase 1 del rediseño está implementada. Se verificó con compilación Android; la revisión manual en emulador queda pendiente porque ADB mantuvo el AVD desconectado durante esta sesión. Consulta `CLAUDE.md` para arquitectura, decisiones, alcance y siguientes pasos.
+La Fase 1 del rediseño está implementada. Se compiló y se revisaron en el emulador API 37 los canales en vertical y apaisado, la reproducción y la entrada/salida de pantalla completa. Queda pendiente una revisión manual completa de Guía, Ajustes y migración de fuentes. Consulta `CLAUDE.md` para arquitectura, decisiones, alcance y siguientes pasos.
