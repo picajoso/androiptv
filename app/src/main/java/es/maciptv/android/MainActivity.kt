@@ -18,12 +18,24 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import es.maciptv.android.ui.AppTab
+import es.maciptv.android.ui.AndroTheme
 import es.maciptv.android.ui.ChannelRow
+import es.maciptv.android.ui.ChannelsActions
+import es.maciptv.android.ui.ChannelsUiState
+import es.maciptv.android.ui.GuideActions
+import es.maciptv.android.ui.GuideUiState
+import es.maciptv.android.ui.GuideViews
 import es.maciptv.android.ui.LogoLoader
+import es.maciptv.android.ui.PlayerActions
+import es.maciptv.android.ui.PlayerUiState
+import es.maciptv.android.ui.PortraitScreens
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.UUID
+import java.time.LocalDate
+import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SecureStore
@@ -39,6 +51,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var channelsView: LinearLayout
     private lateinit var channelList: ListView
     private lateinit var groupList: LinearLayout
+    private lateinit var portraitHost: LinearLayout
     private var displayedChannels: List<Channel> = emptyList()
     private val channelAdapter = object : BaseAdapter() {
         override fun getCount() = displayedChannels.size
@@ -91,6 +104,13 @@ class MainActivity : ComponentActivity() {
     private var loading = false
     private var loadGeneration = 0
     private var logoHttpRestricted = false
+    private var appTab = AppTab.CHANNELS
+    private var portraitPlayer = false
+    private var guideChannelId: String? = null
+    private var guideDayOffset = 0
+    private var channelListScrollPosition = 0
+    private var channelListScrollOffset = 0
+    private var searchOpen = false
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -109,12 +129,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = SecureStore(this)
-        playerView = PlayerView(this).apply { setBackgroundColor(Color.BLACK); useController = true }
+        playerView = PlayerView(this).apply { setBackgroundColor(Color.BLACK); useController = false }
         playback = PlaybackController(this, playerView)
         playback.onError = { message -> runOnUiThread { showError(message) } }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (fullscreen) toggleFullscreen() else {
+                if (fullscreen) toggleFullscreen() else if (portraitPlayer && !isWide()) {
+                    portraitPlayer = false
+                    renderPortraitContent()
+                } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
                 }
@@ -132,6 +155,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildUi() {
+        if (!isWide() && !fullscreen) {
+            buildPortraitUi()
+            return
+        }
         val oldSearch = if (::search.isInitialized) search.text.toString() else ""
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(24, 24, 26)) }
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -217,6 +244,144 @@ class MainActivity : ComponentActivity() {
         renderPanels(); renderGroups(); renderChannels()
     }
 
+    private fun buildPortraitUi() {
+        val oldSearch = if (::search.isInitialized) search.text.toString() else ""
+        if (!::search.isInitialized) {
+            search = EditText(this).apply {
+                hint = "Buscar canales o grupos"; setSingleLine(); setTextColor(Color.BLACK)
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { renderChannels() }
+                    override fun afterTextChanged(s: android.text.Editable?) = Unit
+                })
+            }
+        } else if (search.text.toString() != oldSearch) search.setText(oldSearch)
+        if (!::channelList.isInitialized) channelList = ListView(this).apply {
+            adapter = channelAdapter
+            dividerHeight = dp(1)
+            divider = android.graphics.drawable.ColorDrawable(0x66201E1D)
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(AndroTheme.BG) }
+        portraitHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(portraitHost, LinearLayout.LayoutParams(-1, 0, 1f))
+        status = label(if (channels.isEmpty()) "Conecta un proveedor o prueba la demo" else "${channels.size} canales")
+        now = label(selected?.name ?: "Selecciona un canal")
+        setContentView(root)
+        renderPortraitContent()
+        if (channelListScrollPosition > 0 || channelListScrollOffset != 0) channelList.post {
+            channelList.setSelectionFromTop(channelListScrollPosition, channelListScrollOffset)
+        }
+        renderChannels()
+    }
+
+    private fun renderPortraitContent() {
+        if (!::portraitHost.isInitialized) return
+        portraitHost.removeAllViews()
+        if (portraitPlayer) {
+            playerView.useController = false
+            val current = selected?.let { presentationById[it.id] }
+            val screen = PortraitScreens.renderPlayer(this,
+                PlayerUiState(current, playerView, playback.isPlaying),
+                PlayerActions(
+                    onBack = { portraitPlayer = false; renderPortraitContent() },
+                    onToggle = { playback.togglePlayPause(); renderPortraitContent() },
+                    onPrevious = { move(-1) }, onNext = { move(1) }, onFullscreen = ::toggleFullscreen
+                ))
+            portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
+            syncPortraitTabs()
+            return
+        }
+        when (appTab) {
+            AppTab.CHANNELS -> {
+                (playerView.parent as? ViewGroup)?.removeView(playerView)
+                val screen = PortraitScreens.renderChannels(this,
+                    ChannelsUiState(
+                        preview = selected?.let { presentationById[it.id] },
+                        sourceHeader = buildSourceHeader(),
+                        groups = listOf("Todos", "Favoritos", "Recientes") + channels.map { it.group }.distinct(),
+                        selectedGroup = group,
+                        search = search.text.toString(),
+                        searchOpen = searchOpen,
+                        searchView = search,
+                        list = channelList,
+                        playerView = playerView,
+                        loading = loading,
+                        playing = playback.isPlaying
+                    ),
+                    ChannelsActions(
+                        onSource = ::sourceDialog,
+                        onGroup = { group = it; renderChannels(); renderPortraitContent() },
+                        onSearch = { value, open -> searchOpen = open; if (search.text.toString() != value) search.setText(value) },
+                        onSearchToggle = { searchOpen = !searchOpen; renderPortraitContent() },
+                        onPreview = { portraitPlayer = true; renderPortraitContent() },
+                        onToggle = { playback.togglePlayPause(); renderPortraitContent() },
+                        onFullscreen = ::toggleFullscreen
+                    ))
+                portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
+            }
+            AppTab.GUIDE -> {
+                (playerView.parent as? ViewGroup)?.removeView(playerView)
+                val channelPresentations = channels.mapNotNull { presentationById[it.id] }
+                    .filter { guide[it.channel.tvgId].orEmpty().isNotEmpty() }
+                val guideChannel = channelPresentations.firstOrNull { it.channel.id == guideChannelId }
+                    ?: selected?.let { channel -> channelPresentations.firstOrNull { it.channel.id == channel.id } }
+                    ?: channelPresentations.firstOrNull()
+                guideChannelId = guideChannel?.channel?.id
+                val day = LocalDate.now(ZoneId.systemDefault()).plusDays(guideDayOffset.toLong())
+                val entries = guideChannel?.let { GuideDayFilter.forDate(guide[it.channel.tvgId].orEmpty(), day, ZoneId.systemDefault()) }.orEmpty()
+                val screen = GuideViews.render(this, GuideUiState(guideChannel, channelPresentations, entries, guideDayOffset),
+                    GuideActions(
+                        onChannel = { guideChannelId = it.channel.id; renderPortraitContent() },
+                        onDay = { guideDayOffset = it.coerceIn(0, 1); renderPortraitContent() },
+                        onWatch = { guideChannel?.let { selectChannel(it.channel, openPlayer = true) } }
+                    ))
+                portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
+            }
+            AppTab.SETTINGS -> sourceDialog()
+        }
+        syncPortraitTabs()
+    }
+
+    private fun syncPortraitTabs() {
+        if (!::root.isInitialized) return
+        val existing = root.findViewWithTag<View>("portrait-tabs")
+        if (portraitPlayer) {
+            if (existing != null) root.removeView(existing)
+        } else if (existing == null) {
+            root.addView(PortraitScreens.bottomTabs(this, appTab, ::selectPortraitTab).apply { tag = "portrait-tabs" })
+        } else {
+            val index = root.indexOfChild(existing)
+            root.removeView(existing)
+            root.addView(PortraitScreens.bottomTabs(this, appTab, ::selectPortraitTab).apply { tag = "portrait-tabs" }, index)
+        }
+    }
+
+    private fun buildSourceHeader(): String {
+        val active = activeSavedSource ?: return "Sin fuente activa"
+        val kind = when (active.config.kind) {
+            SourceKind.M3U_URL -> "URL M3U"
+            SourceKind.M3U_FILE -> "Archivo M3U"
+            SourceKind.XTREAM -> "Xtream"
+            SourceKind.DEMO -> "Demo"
+        }
+        return "${active.name} · $kind · ${channels.size}"
+    }
+
+    private fun selectPortraitTab(tab: AppTab) {
+        if (tab == AppTab.SETTINGS) {
+            sourceDialog()
+            return
+        }
+        if (::channelList.isInitialized && channelList.childCount > 0) {
+            channelListScrollPosition = channelList.firstVisiblePosition
+            channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
+        }
+        portraitPlayer = false
+        appTab = tab
+        renderPortraitContent()
+    }
+
     private fun isWide() = resources.configuration.screenWidthDp >= 700 ||
         resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
@@ -233,6 +398,7 @@ class MainActivity : ComponentActivity() {
         status.visibility = if (fullscreen) View.GONE else View.VISIBLE
         fullscreenTools.visibility = if (fullscreen) View.VISIBLE else View.GONE
         now.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        playerView.useController = fullscreen
         playerView.resizeMode = if (fullscreen && fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         val bars = WindowInsetsCompat.Type.systemBars()
         WindowInsetsControllerCompat(window, root).apply {
@@ -243,11 +409,12 @@ class MainActivity : ComponentActivity() {
     }
     private fun toggleFullscreen() {
         fullscreen = !fullscreen
-        renderPanels()
+        if (isWide() && ::topBar.isInitialized && ::groupsView.isInitialized) renderPanels()
         requestedOrientation = if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
     private fun renderGroups() {
+        if (!::groupList.isInitialized) return
         groupList.removeAllViews()
         (listOf("Todos", "Favoritos", "Recientes") + channels.map { it.group }.distinct()).forEach { name ->
             groupList.addView(button(name) { group = name; renderChannels() }, LinearLayout.LayoutParams(-1, dp(46)))
@@ -268,7 +435,11 @@ class MainActivity : ComponentActivity() {
         displayedChannels = visibleChannels()
         channelAdapter.notifyDataSetChanged()
     }
-    private fun selectChannel(c: Channel) {
+    private fun selectChannel(c: Channel, openPlayer: Boolean = true) {
+        if (openPlayer && !isWide() && ::channelList.isInitialized && channelList.childCount > 0) {
+            channelListScrollPosition = channelList.firstVisiblePosition
+            channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
+        }
         val config = source ?: return
         if (selected?.id != c.id) previous = selected?.id
         selected = c
@@ -283,6 +454,11 @@ class MainActivity : ComponentActivity() {
         playback.play(c, config, useActiveNetwork(config))
         status.text = c.name
         renderChannels()
+        if (!isWide() && !fullscreen && openPlayer) {
+            appTab = AppTab.CHANNELS
+            portraitPlayer = true
+            renderPortraitContent()
+        } else if (!isWide() && !fullscreen && ::portraitHost.isInitialized) renderPortraitContent()
     }
     private fun move(delta: Int) {
         val list = visibleChannels()
@@ -445,7 +621,7 @@ class MainActivity : ComponentActivity() {
                     group = "Todos"; renderGroups(); renderChannels()
                     status.text = "${channels.size} canales"
                     val resumeId = if (restore) activeSavedSource?.lastChannelId else selected?.id
-                    resumeId?.let { id -> channels.firstOrNull { it.id == id }?.let(::selectChannel) }
+                    resumeId?.let { id -> channels.firstOrNull { it.id == id }?.let { selectChannel(it, openPlayer = false) } }
                 }
             } catch (e: Exception) { runOnUiThread {
                 if (generation == loadGeneration) { loading = false; showError(e.message ?: "Error al cargar canales") }
@@ -483,6 +659,13 @@ class MainActivity : ComponentActivity() {
             }.setNegativeButton("Cancelar", null).show()
     }
     private fun showError(message: String) { status.text = message; Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
-    override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); buildUi() }
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::channelList.isInitialized && channelList.childCount > 0) {
+            channelListScrollPosition = channelList.firstVisiblePosition
+            channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
+        }
+        buildUi()
+    }
     override fun onDestroy() { presentationGeneration++; playback.release(); worker.shutdownNow(); super.onDestroy() }
 }

@@ -21,6 +21,11 @@ class PlaybackController(context: Context, val view: PlayerView) {
     private var convertedToHls = false
     private var playingOriginal = false
     var onError: ((String) -> Unit)? = null
+    val isPlaying: Boolean get() = player.playWhenReady
+
+    fun togglePlayPause() {
+        if (player.playWhenReady) player.pause() else if (current != null) player.play()
+    }
 
     init {
         view.player = player

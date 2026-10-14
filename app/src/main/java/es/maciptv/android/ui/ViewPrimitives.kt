@@ -57,11 +57,12 @@ fun flatButton(
     setOnClickListener { onClick() }
 }
 
-fun iconButton(context: Context, drawableId: Int, description: String, onClick: () -> Unit): ImageButton =
+fun iconButton(context: Context, drawableId: Int, description: String, onClick: () -> Unit,
+    tintColor: Int = AndroTheme.TEXT): ImageButton =
     ImageButton(context).apply {
         contentDescription = description
         setImageResource(drawableId)
-        imageTintList = ColorStateList.valueOf(AndroTheme.TEXT)
+        imageTintList = ColorStateList.valueOf(tintColor)
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         background = GradientDrawable().apply { setColor(Color.TRANSPARENT); cornerRadius = 0f }
         minimumWidth = AndroTheme.dp(context, AndroTheme.MIN_TOUCH_DP)
