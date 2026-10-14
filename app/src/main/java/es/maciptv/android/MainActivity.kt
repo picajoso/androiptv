@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.common.util.UnstableApi
 import es.maciptv.android.ui.AppTab
 import es.maciptv.android.ui.AndroTheme
 import es.maciptv.android.ui.ChannelRow
@@ -37,6 +38,11 @@ import es.maciptv.android.ui.SettingsScreen
 import es.maciptv.android.ui.SettingsUiState
 import es.maciptv.android.ui.SleepTimer
 import es.maciptv.android.ui.NoticeView
+import es.maciptv.android.ui.LandscapeActions
+import es.maciptv.android.ui.LandscapePanels
+import es.maciptv.android.ui.LandscapeUiState
+import es.maciptv.android.ui.GroupItem
+import es.maciptv.android.ui.PlaybackControls
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -44,6 +50,7 @@ import java.util.UUID
 import java.time.LocalDate
 import java.time.ZoneId
 
+@UnstableApi
 class MainActivity : ComponentActivity() {
     private lateinit var store: SecureStore
     private lateinit var playback: PlaybackController
@@ -187,6 +194,10 @@ class MainActivity : ComponentActivity() {
             buildPortraitUi()
             return
         }
+        if (isWide() && !fullscreen) {
+            buildLandscapeUi()
+            return
+        }
         val oldSearch = if (::search.isInitialized) search.text.toString() else ""
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(24, 24, 26)) }
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -303,6 +314,133 @@ class MainActivity : ComponentActivity() {
             channelList.setSelectionFromTop(channelListScrollPosition, channelListScrollOffset)
         }
         renderChannels()
+    }
+
+    private fun buildLandscapeUi() {
+        val oldSearch = if (::search.isInitialized) search.text.toString() else ""
+        search = EditText(this).apply {
+            hint = "Buscar canales o grupos"
+            setSingleLine()
+            setText(oldSearch)
+            setTextColor(AndroTheme.TEXT)
+            setHintTextColor(AndroTheme.NEUTRAL_600)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { renderChannels() }
+                override fun afterTextChanged(s: android.text.Editable?) = Unit
+            })
+        }
+        if (!::channelList.isInitialized) channelList = ListView(this).apply {
+            adapter = channelAdapter
+            dividerHeight = dp(1)
+            divider = android.graphics.drawable.ColorDrawable(AndroTheme.DIVIDER)
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(AndroTheme.BG) }
+        status = label(if (channels.isEmpty()) "Conecta un proveedor o prueba la demo" else "${channels.size} canales")
+        now = label(selected?.name ?: "Selecciona un canal")
+        val playerHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
+            val frame = FrameLayout(this@MainActivity).apply { setBackgroundColor(Color.BLACK) }
+            (playerView.parent as? ViewGroup)?.removeView(playerView)
+            playerView.useController = false
+            frame.addView(playerView, FrameLayout.LayoutParams(-1, -1))
+            addView(frame, LinearLayout.LayoutParams(-1, 0, 1f))
+            val selectedPresentation = selected?.let { presentationById[it.id] }
+            addView(textViewForLandscape(selectedPresentation?.let { "AHORA · ${it.currentProgramme?.title ?: "En directo"}" } ?: "Selecciona un canal"),
+                LinearLayout.LayoutParams(-1, dp(44)))
+            val next = selectedPresentation?.let { nextProgramme(it.channel) }
+            addView(textViewForLandscape(next?.let { "DESPUÉS · ${it.title}" } ?: "Sin información siguiente"),
+                LinearLayout.LayoutParams(-1, dp(36)))
+            addView(PlaybackControls.programmeProgress(this@MainActivity, selectedPresentation?.progressPercent),
+                LinearLayout.LayoutParams(-1, dp(3)))
+            addView(PlaybackControls.transport(this@MainActivity, playback.isPlaying, {
+                playback.togglePlayPause(); buildLandscapeUi()
+            }, { move(-1) }, { move(1) }, ::toggleFullscreen, tintColor = Color.WHITE), LinearLayout.LayoutParams(-1, dp(52)))
+            val actions = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+            actions.addView(button(if (fillVideo) "Sin recortar" else "Rellenar") {
+                fillVideo = !fillVideo; store.fillVideo = fillVideo
+                playerView.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                buildLandscapeUi()
+            })
+            actions.addView(button("Abrir fuera") { openExternal() })
+            addView(actions, LinearLayout.LayoutParams(-1, dp(48)))
+        }
+        val content = when (appTab) {
+            AppTab.SETTINGS -> renderSettings()
+            AppTab.GUIDE -> createGuideScreen()
+            AppTab.CHANNELS -> null
+        }
+        val groups = createLandscapeGroups()
+        val pageTitle = if (appTab == AppTab.SETTINGS) "Ajustes" else if (appTab == AppTab.GUIDE) "Guía · ${buildSourceHeader()}" else buildSourceHeader()
+        root.addView(LandscapePanels.render(this,
+            LandscapeUiState(pageTitle, groups, group, search, channelList, content),
+            LandscapeActions(
+                onGroup = { group = it; renderChannels(); buildLandscapeUi() },
+                onRefresh = { source?.let { load(it, false) } },
+                onSettings = {
+                    appTab = if (appTab == AppTab.SETTINGS) AppTab.CHANNELS else AppTab.SETTINGS
+                    buildLandscapeUi()
+                },
+                onGuide = { appTab = if (appTab == AppTab.GUIDE) AppTab.CHANNELS else AppTab.GUIDE; buildLandscapeUi() },
+                onFullscreen = ::toggleFullscreen,
+                onBack = if (appTab == AppTab.CHANNELS) null else ({ appTab = AppTab.CHANNELS; buildLandscapeUi() })
+            ), playerHost), LinearLayout.LayoutParams(-1, -1))
+        setContentView(root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, bars.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
+        if (channelListScrollPosition > 0 || channelListScrollOffset != 0) channelList.post {
+            channelList.setSelectionFromTop(channelListScrollPosition, channelListScrollOffset)
+        }
+        renderChannels()
+    }
+
+    private fun textViewForLandscape(value: String) = TextView(this).apply {
+        text = value
+        setTextColor(Color.WHITE)
+        textSize = 12f
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), 0, dp(8), 0)
+    }
+
+    private fun createLandscapeGroups(): List<GroupItem> {
+        val favorites = store.favorites
+        val recents = store.recents
+        val groups = listOf("Todos", "Favoritos", "Recientes") + channels.map { it.group }.distinct()
+        return groups.distinct().map { groupName ->
+            val count = when (groupName) {
+                "Todos" -> channels.size
+                "Favoritos" -> channels.count { it.id in favorites }
+                "Recientes" -> channels.count { it.id in recents }
+                else -> channels.count { it.group == groupName }
+            }
+            GroupItem(groupName, count)
+        }
+    }
+
+    private fun nextProgramme(channel: Channel): Programme? = guide[channel.tvgId].orEmpty()
+        .filter { it.startMillis > System.currentTimeMillis() }.minByOrNull { it.startMillis }
+
+    private fun createGuideScreen(): View {
+        val channelPresentations = channels.mapNotNull { presentationById[it.id] }
+            .filter { guide[it.channel.tvgId].orEmpty().isNotEmpty() }
+        val guideChannel = channelPresentations.firstOrNull { it.channel.id == guideChannelId }
+            ?: selected?.let { channel -> channelPresentations.firstOrNull { it.channel.id == channel.id } }
+            ?: channelPresentations.firstOrNull()
+        guideChannelId = guideChannel?.channel?.id
+        val day = LocalDate.now(ZoneId.systemDefault()).plusDays(guideDayOffset.toLong())
+        val entries = guideChannel?.let { GuideDayFilter.forDate(guide[it.channel.tvgId].orEmpty(), day, ZoneId.systemDefault()) }.orEmpty()
+        return GuideViews.render(this, GuideUiState(guideChannel, channelPresentations, entries, guideDayOffset),
+            GuideActions(
+                onChannel = { guideChannelId = it.channel.id; if (isWide()) buildLandscapeUi() else renderPortraitContent() },
+                onDay = { guideDayOffset = it.coerceIn(0, 1); if (isWide()) buildLandscapeUi() else renderPortraitContent() },
+                onWatch = { guideChannel?.let { selectChannel(it.channel, openPlayer = true) } }
+            ))
     }
 
     private fun renderPortraitContent() {

@@ -14,12 +14,12 @@ Este repositorio contiene el proyecto Android, separado del proyecto macOS MacIP
 
 - Proyecto Android independiente, paquete `es.maciptv.android`, versión `0.1.0`.
 - Compila con `assembleDebug`; el APK de desarrollo está en `app/build/outputs/apk/debug/app-debug.apk`.
-- Instalado en el AVD `Medium_Phone_API_37.0` de Android Studio.
-- Se cargó una fuente Xtream de uso del propietario en el emulador. No copies aquí su URL, usuario, contraseña ni URLs de canales: pueden incluir credenciales.
-- Se comprobó reproducción de canales reales del proveedor en el emulador, incluida la categoría de deportes. El canal se reanuda después de volver a abrir la app.
-- Se implementó pantalla completa: al activarla fuerza apaisado, oculta barras del sistema y paneles, muestra controles Media3 al tocar el vídeo y ofrece «Ver sin recortar» / «Rellenar pantalla» más «Salir».
+- En sesiones anteriores se usó el AVD `Medium_Phone_API_37.0` para comprobar reproducción. En la sesión de la Fase 1, ADB informó el emulador como `offline`, así que los cambios recientes no tuvieron revisión manual en pantalla.
+- No copies aquí direcciones, usuario, contraseña ni URLs de canales de fuentes reales: pueden incluir credenciales.
+- La pantalla completa provisional fuerza apaisado, oculta barras del sistema y paneles, muestra el controlador Media3 y ofrece ajuste para ver la imagen completa o rellenar la pantalla.
+- La Fase 1 añade almacenamiento cifrado de varias fuentes, presentación de nombre y guía por día, tema y controles propios, logos seguros con fallback a iniciales, pantallas adaptables vertical/apaisado, ajustes, temporizador de apagado y controlador Media3 en pantalla completa provisional.
 - Una lista grande llegó a provocar `OutOfMemoryError` porque se creaba una vista Android por cada canal. La lista se cambió a `ListView` con `BaseAdapter`, que crea y reutiliza filas visibles. No volver a materializar todos los canales en vistas individuales.
-- La última compilación e instalación incluyó el modo pantalla completa y la lista virtualizada. Se verificó en el emulador que la reproducción seguía activa al cambiar de orientación y que el ajuste sin recorte conservaba el marcador del partido.
+- Una compilación anterior incluyó el modo pantalla completa y la lista virtualizada. La rotación y el ajuste de imagen requieren nueva revisión manual junto con la Fase 1.
 
 El emulador puede desconectarse de ADB o cerrarse; eso no equivale por sí solo a un fallo de la app. Comprueba `adb devices` y el proceso antes de atribuirle un cierre. El emulador API 37 también produjo una traza nativa transitoria de `MediaCodec`; en otra ocasión el evento fue un `OutOfMemoryError` de la UI. La virtualización de filas corrigió esta segunda causa.
 
@@ -63,13 +63,15 @@ Código Kotlin: `app/src/main/java/es/maciptv/android/`.
 
 | Archivo | Responsabilidad |
 | --- | --- |
-| `MainActivity.kt` | Interfaz programática, fuente y selector de archivos, grupos/búsqueda, lista virtualizada, navegación, guía, pantalla completa, estados de carga y reanudación. Es el punto de entrada y actualmente concentra bastante lógica. |
+| `MainActivity.kt` | Punto de entrada: carga/selección de fuente, grupos y búsqueda, navegación, guías, orientación/pantalla completa, estados y reanudación. Actualmente concentra bastante lógica. |
 | `Models.kt` | `SourceConfig`, `Channel`, `Programme`, construcción de URLs Xtream e identificadores persistentes de canal. |
 | `SecureStore.kt` | Cifrado AES/GCM de la configuración de proveedor con clave Android Keystore; preferencias para último canal, favoritos y recientes. |
 | `SafeNetwork.kt` | Cliente OkHttp, validación HTTP/HTTPS, redirecciones, límites de respuesta y bloqueo DNS de IP privadas salvo autorización de servidor local. |
 | `PlaylistParsers.kt` | Parseo de M3U y XMLTV con límites de tamaño/canales/programas. |
 | `PlaybackController.kt` | ExoPlayer/Media3, reproducción HLS y progresiva, User-Agent compatible con el proveedor, reintentos y fallback de Xtream HLS a la URL TS original en respuestas 4xx. |
 | `DemoContent.kt` | Canales HLS públicos y programación ficticia para la demo. |
+| `ChannelName.kt`, `GuideDayFilter.kt`, `ChannelPresentation.kt` | Nombre de pantalla, filtro local por fecha y presentación de programa/progreso calculados al cargar y refrescados cada minuto. |
+| `ui/` | Primitivas visuales, vistas verticales/apaisadas, guía, ajustes, filas/logo y temporizador. |
 | `AndroidManifest.xml` | Permiso de red, etiqueta, tema, backup desactivado, actividad principal y cambios de configuración de orientación. |
 
 Los ajustes del proyecto están en `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties` y `app/build.gradle.kts`. No hay layouts XML de pantalla: la interfaz se construye desde Kotlin.
@@ -109,7 +111,9 @@ El reproductor Android no comparte el relay HLS de MacIPTV. Si una fuente falla 
 
 El botón ⛶ activa `SCREEN_ORIENTATION_SENSOR_LANDSCAPE`, oculta paneles y barras del sistema y asigna `RESIZE_MODE_ZOOM` por defecto para ocupar la pantalla. «Ver sin recortar» cambia a `RESIZE_MODE_FIT`; volver a «Rellenar pantalla» cambia a zoom. El botón «Salir» o el botón Atrás restaura la interfaz. Conserva el canal durante rotaciones y evita recrear el reproductor.
 
-Al cambiar orientación, `onConfigurationChanged` reconstruye la interfaz y vuelve a conectar el mismo `PlayerView`. Si se modifica el ciclo de vida, garantiza que el player quede adjunto a una sola vista y se libere en `onDestroy`.
+Al cambiar orientación, `onConfigurationChanged` reconstruye la interfaz y vuelve a conectar el mismo `PlayerView`; el cambio de contenedor no vuelve a llamar a `play()` ni cambia el medio. El reproductor queda adjunto a una sola vista y se libera en `onDestroy`.
+
+La Fase 1 ofrece controles propios en vertical y apaisado (`PlayerView.useController=false`) y conserva el controlador Media3 solo en pantalla completa provisional. En tableta apaisada, los grupos y canales ocupan paneles junto al reproductor; Guía y Ajustes sustituyen el contenido principal. Pestaña, grupo, búsqueda y posición de lista se conservan al rotar. Los botones de icono tienen descripciones accesibles en español.
 
 ## Progreso funcional
 
@@ -124,19 +128,22 @@ Al cambiar orientación, `onConfigurationChanged` reconstruye la interfaz y vuel
 - Demo de reproducción y EPG.
 - Paneles plegables y pantalla completa apaisada, con ajuste zoom/fit.
 - Almacenamiento cifrado del proveedor y restricciones de red explícitas.
+- Fuentes múltiples con migración verificada antes de borrar datos antiguos; favoritos y recientes mantienen sus identificadores actuales.
+- Limpieza de nombres solo visual; búsqueda incluye el nombre original. Guía Hoy/Mañana filtrada por día local y fechas con el idioma del dispositivo.
+- Logo por fuente con un único cliente de red seguro compartido, caché acotada a 1/16 del heap y decodificación al tamaño de pantalla. Si HTTP no está autorizado, se muestran iniciales y se informa en Ajustes.
+- Temporizador de apagado temporal que no se persiste; se cancela al destruir la actividad o quitar la fuente activa.
 
 ## Pendiente y posibles siguientes pasos
 
-Prioriza estas tareas según los problemas que aparezcan en el emulador o en el móvil:
+La Fase 1 está implementada. Próximos pasos, sujetos a la prioridad del usuario:
 
 1. Añadir pruebas unitarias para M3U, XMLTV, generación de URLs Xtream, identidad estable y cifrado/descifrado.
 2. Separar estado, carga de datos y lógica de reproducción de `MainActivity` hacia clases con ciclo de vida claro; valorar ViewModel y repositorio.
 3. Mejorar el parser M3U: actualmente extrae el nombre con la primera coma y los atributos mediante regex; nombres con comas entrecomilladas y sintaxis inusual merecen cobertura compatible con el parser macOS.
 4. Endurecer XMLTV frente a DTD/entidades y aceptar variantes de zona horaria que aparezcan en proveedores reales.
-5. Añadir imágenes/logos de canales y una guía visual más cercana a MacIPTV.
-6. Valorar un relay HLS Android con validación de cada manifiesto, segmento, clave y redirección si los proveedores muestran fallos de token/segmento.
-7. Probar API 26 y un dispositivo físico, además del AVD API 37; comprobar rotación, listas grandes, HEVC, sonido, cambios rápidos de canal y reanudación.
-8. Añadir una experiencia de tableta más pulida y persistir preferencias visuales como el modo zoom/fit si el usuario lo solicita.
+5. Valorar un relay HLS Android con validación de cada manifiesto, segmento, clave y redirección si los proveedores muestran fallos de token/segmento.
+6. Probar API 26 y un dispositivo físico, además del AVD API 37; comprobar rotación, listas grandes, HEVC, sonido, cambios rápidos de canal y reanudación.
+7. Continuar con la Fase 2 de rediseño según la especificación aprobada, incluida la revisión visual cuando el emulador esté disponible.
 
 No se ha implementado Android TV, reproducción en segundo plano, Picture-in-Picture ni control remoto específico.
 
