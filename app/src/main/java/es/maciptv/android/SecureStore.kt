@@ -130,8 +130,12 @@ class SecureStore(context: Context) {
         get() = prefs.getStringSet("reminderMarks.v1", emptySet())?.toSet() ?: emptySet()
         set(value) { prefs.edit().putStringSet("reminderMarks.v1", value.toSet()).apply() }
 
+    var exactAlarmPrompted: Boolean
+        get() = prefs.getBoolean("exactAlarmPrompted", false)
+        set(value) { prefs.edit().putBoolean("exactAlarmPrompted", value).apply() }
+
     fun pruneEndedReminderMarks(sourceId: String, channels: List<Channel>,
-                                guide: Map<String, List<Programme>>, nowMillis: Long) {
+                                guide: Map<String, List<Programme>>, nowMillis: Long): Set<String> {
         val byId = channels.associateBy { it.id }
         val prefix = "$sourceId|"
         val current = reminderMarks
@@ -139,12 +143,14 @@ class SecureStore(context: Context) {
             if (!mark.startsWith(prefix)) return@filterTo true
             val separator = mark.lastIndexOf('|')
             if (separator <= prefix.length) return@filterTo true
-            val channel = byId[mark.substring(prefix.length, separator)]
             val start = mark.substring(separator + 1).toLongOrNull() ?: return@filterTo true
+            if (start <= nowMillis) return@filterTo false
+            val channel = byId[mark.substring(prefix.length, separator)]
             val match = channel?.let { guide[it.tvgId].orEmpty().firstOrNull { p -> p.startMillis == start } }
             match?.endMillis?.let { it > nowMillis } ?: true
         }
         if (kept != current) reminderMarks = kept
+        return current - kept
     }
 
     var resumeLastChannel: Boolean

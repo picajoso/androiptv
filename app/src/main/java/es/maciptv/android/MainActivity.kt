@@ -1,6 +1,7 @@
 package es.maciptv.android
 
 import android.app.AlertDialog
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -13,6 +14,7 @@ import android.graphics.PixelFormat
 import android.graphics.ColorFilter
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -81,6 +83,8 @@ import java.time.ZoneId
 @UnstableApi
 class MainActivity : ComponentActivity() {
     private lateinit var store: SecureStore
+    private lateinit var reminders: ProgrammeReminders
+    private var pendingReminderChannelId: String? = null
     private lateinit var playback: PlaybackController
     private lateinit var sleepTimer: SleepTimer
     private lateinit var root: LinearLayout
@@ -176,6 +180,10 @@ class MainActivity : ComponentActivity() {
     private var pendingProviderName: String? = null
     private var pendingProviderSource: SavedSource? = null
 
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) showError("La marca se guardó, pero Android no permitirá mostrar el aviso hasta que actives las notificaciones")
+    }
+
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
@@ -205,6 +213,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = SecureStore(this)
+        reminders = ProgrammeReminders(this, store)
         fillVideo = store.fillVideo
         playerView = PlayerView(this).apply { setBackgroundColor(Color.BLACK); useController = false }
         playback = PlaybackController(this, playerView)
@@ -237,11 +246,30 @@ class MainActivity : ComponentActivity() {
         worker.scheduleAtFixedRate({ refreshPresentations() }, 1, 1, TimeUnit.MINUTES)
         try {
             savedSources = store.loadSources()
-            activeSavedSource = savedSources.activeSource
+            val targetSource = intent.getStringExtra(ProgrammeReminders.EXTRA_SOURCE)
+            activeSavedSource = savedSources.sources.firstOrNull { it.id == targetSource } ?: savedSources.activeSource
+            if (targetSource == activeSavedSource?.id) pendingReminderChannelId = intent.getStringExtra(ProgrammeReminders.EXTRA_CHANNEL)
             source = activeSavedSource?.config
             source?.let(::useActiveNetwork)
             source?.let { load(it, store.resumeLastChannel) }
         } catch (e: Exception) { showError("No se pudo abrir la fuente guardada: ${e.message}") }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::reminders.isInitialized) reminders.reconcile()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val sourceId = intent.getStringExtra(ProgrammeReminders.EXTRA_SOURCE) ?: return
+        val channelId = intent.getStringExtra(ProgrammeReminders.EXTRA_CHANNEL) ?: return
+        val target = savedSources.sources.firstOrNull { it.id == sourceId } ?: return
+        pendingReminderChannelId = channelId
+        if (activeSavedSource?.id == sourceId) {
+            channels.firstOrNull { it.id == channelId }?.let { pendingReminderChannelId = null; selectChannel(it) }
+        } else activateSavedSource(target)
     }
 
     private fun buildUi() {
@@ -875,6 +903,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 try {
                     savedSources = store.removeSavedSource(saved.id)
+                    reminders.removeSource(saved.id)
                     activeSavedSource = savedSources.activeSource
                     if (::portraitHost.isInitialized) renderPortraitContent()
                 } catch (_: Exception) { showError("No se pudo quitar la fuente") }
@@ -1100,9 +1129,25 @@ class MainActivity : ComponentActivity() {
         val marks = store.reminderMarks.toMutableSet()
         val added = marks.add(key)
         if (!added) marks.remove(key)
+        if (added) {
+            try { reminders.add(key, channels.firstOrNull { it.id == channelId }?.name ?: "Canal", programme) }
+            catch (_: Exception) { showError("No se pudo programar el aviso"); return }
+        } else reminders.remove(key)
         store.reminderMarks = marks
         if (rerender) renderPortraitContent()
-        showError(if (added) "Marcado en la guía" else "Marca quitada")
+        if (added) {
+            if (Build.VERSION.SDK_INT >= 33 && !reminders.canNotify()) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            if (!reminders.isExact() && !store.exactAlarmPrompted) {
+                store.exactAlarmPrompted = true
+                AlertDialog.Builder(this).setTitle("Avisos puntuales")
+                    .setMessage("Android permite ahora avisos aproximados. Puedes activar las alarmas exactas para recibirlos al comenzar el programa.")
+                    .setPositiveButton("Activar") { _, _ ->
+                        try { startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)) }
+                        catch (_: Exception) { showError("Abre los permisos de la app para activar las alarmas exactas") }
+                    }.setNegativeButton("Más tarde", null).show()
+            }
+        }
+        showError(if (added) "Aviso programado${if (reminders.isExact()) "" else " (hora aproximada)"}" else "Aviso cancelado")
     }
 
     private fun refreshPresentations() {
@@ -1217,6 +1262,7 @@ class MainActivity : ComponentActivity() {
             loadGeneration++
             playback.stop()
             savedSources = store.removeSavedSource(active.id)
+            reminders.removeSource(active.id)
             activeSavedSource = savedSources.activeSource
             source = activeSavedSource?.config
             activeNetwork = null
@@ -1269,6 +1315,8 @@ class MainActivity : ComponentActivity() {
                     channels = parsed; guide = programmes; loading = false
                     activeSavedSource?.takeIf { it.config == config }?.let { active ->
                         store.pruneEndedReminderMarks(active.id, parsed, programmes, System.currentTimeMillis())
+                            .forEach(reminders::remove)
+                        reminders.syncGuide(active.id, parsed, programmes)
                     }
                     logoHttpRestricted = blockedLogos
                     activeSavedSource?.takeIf { it.config == config }?.let { active ->
@@ -1292,6 +1340,12 @@ class MainActivity : ComponentActivity() {
                             renderChannels()
                         } else selectChannel(channel, openPlayer = false)
                     } }
+                    pendingReminderChannelId?.let { id ->
+                        channels.firstOrNull { it.id == id }?.let { channel ->
+                            pendingReminderChannelId = null
+                            selectChannel(channel, openPlayer = true)
+                        }
+                    }
                     if (isWide() && !fullscreen) buildLandscapeUi()
                     else if (::portraitHost.isInitialized) {
                         if (appTab == AppTab.GUIDE && guideStep == GuideStep.GRID) preparePortraitGuide()
