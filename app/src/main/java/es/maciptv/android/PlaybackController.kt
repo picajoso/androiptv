@@ -3,18 +3,28 @@ package es.maciptv.android
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.DeviceInfo
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.cast.CastPlayer
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.ui.PlayerView
 
 @UnstableApi
 class PlaybackController(context: Context, val view: PlayerView) {
-    private val player = ExoPlayer.Builder(context).build()
+    private val localPlayer = ExoPlayer.Builder(context).setMediaSourceFactory(
+        DefaultMediaSourceFactory(DataSource.Factory {
+            val active = network ?: error("No hay una fuente activa")
+            OkHttpDataSource.Factory(active.client).setUserAgent("VLC/3.0.21 LibVLC/3.0.21").createDataSource()
+        })
+    ).build()
+    private val player = CastPlayer.Builder(context).setLocalPlayer(localPlayer).build()
     private var source: SourceConfig? = null
     private var network: SafeNetwork? = null
     private var current: Channel? = null
@@ -23,8 +33,11 @@ class PlaybackController(context: Context, val view: PlayerView) {
     private var convertedToHls = false
     private var playingOriginal = false
     var onError: ((String) -> Unit)? = null
+    var onPlaybackStateChanged: (() -> Unit)? = null
+    var onRemoteChanged: ((Boolean) -> Unit)? = null
     val isPlaying: Boolean get() = player.playWhenReady
     val currentChannelId: String? get() = current?.id
+    val isCasting: Boolean get() = player.deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
 
     fun togglePlayPause() {
         if (player.playWhenReady) player.pause() else if (current != null) player.play()
@@ -34,6 +47,11 @@ class PlaybackController(context: Context, val view: PlayerView) {
     init {
         view.player = player
         player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { onPlaybackStateChanged?.invoke() }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { onPlaybackStateChanged?.invoke() }
+            override fun onDeviceInfoChanged(deviceInfo: DeviceInfo) {
+                onRemoteChanged?.invoke(deviceInfo.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE)
+            }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 val code = generateSequence(error as Throwable?) { it.cause }
                     .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
@@ -68,16 +86,15 @@ class PlaybackController(context: Context, val view: PlayerView) {
             }
             network.validateUrl(url)
             source = config; this.network = network; current = channel
-            val factory = OkHttpDataSource.Factory(network.client).setUserAgent("VLC/3.0.21 LibVLC/3.0.21")
-            val item = MediaItem.fromUri(Uri.parse(url))
-            val mediaSource = if (url.substringBefore('?').endsWith(".m3u8", true))
-                HlsMediaSource.Factory(factory).createMediaSource(item)
-            else DefaultMediaSourceFactory(factory).createMediaSource(item)
-            player.setMediaSource(mediaSource)
+            val isHls = url.substringBefore('?').endsWith(".m3u8", true)
+            val item = MediaItem.Builder().setUri(Uri.parse(url))
+                .setMimeType(if (isHls) MimeTypes.APPLICATION_M3U8 else null)
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(channel.name).build()).build()
+            player.setMediaItem(item)
             player.prepare()
             player.playWhenReady = true
         } catch (e: Exception) { onError?.invoke(e.message ?: "Error de reproducción") }
     }
     fun stop() { generation++; player.stop(); current = null; source = null; network = null }
-    fun release() { player.release() }
+    fun release() { player.release(); localPlayer.release() }
 }

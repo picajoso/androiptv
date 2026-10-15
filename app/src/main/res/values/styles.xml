@@ -1,0 +1,8 @@
+<resources>
+    <style name="AndroIPTVTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:colorBackground">#FFF3F1F1</item>
+        <item name="colorPrimary">#FFFF190D</item>
+        <item name="colorPrimaryDark">#FFC21A0F</item>
+        <item name="colorAccent">#FFFF190D</item>
+    </style>
+</resources>

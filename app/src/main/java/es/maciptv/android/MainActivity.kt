@@ -20,7 +20,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
@@ -29,6 +29,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.cast.MediaRouteButtonFactory
+import androidx.mediarouter.app.MediaRouteButton
 import es.maciptv.android.ui.AppTab
 import es.maciptv.android.ui.AndroTheme
 import es.maciptv.android.ui.ChannelRow
@@ -81,7 +83,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 @UnstableApi
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var store: SecureStore
     private lateinit var reminders: ProgrammeReminders
     private var pendingReminderChannelId: String? = null
@@ -94,6 +96,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var fullscreenTools: View
     private lateinit var fitButton: Button
     private lateinit var playerView: PlayerView
+    private var castRouteButton: MediaRouteButton? = null
+    private var castButtonReady = false
     private lateinit var groupsView: LinearLayout
     private lateinit var channelsView: LinearLayout
     private lateinit var channelList: ListView
@@ -227,6 +231,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         playback.onError = { message -> runOnUiThread { showError(message) } }
+        playback.onPlaybackStateChanged = {
+            portraitPlayerScreen?.updatePlaying(playback.isPlaying)
+            landscapePlayerPanel?.updatePlaying(playback.isPlaying)
+            if (fullscreen) updateFullscreenState()
+        }
+        playback.onRemoteChanged = { remote ->
+            showError(if (remote) "Reproduciendo en un dispositivo Cast" else "Reproducción en este dispositivo")
+        }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (fullscreen) toggleFullscreen() else if (portraitPlayer && !isWide()) {
@@ -248,7 +260,13 @@ class MainActivity : ComponentActivity() {
             savedSources = store.loadSources()
             val targetSource = intent.getStringExtra(ProgrammeReminders.EXTRA_SOURCE)
             activeSavedSource = savedSources.sources.firstOrNull { it.id == targetSource } ?: savedSources.activeSource
-            if (targetSource == activeSavedSource?.id) pendingReminderChannelId = intent.getStringExtra(ProgrammeReminders.EXTRA_CHANNEL)
+            if (targetSource == activeSavedSource?.id) {
+                pendingReminderChannelId = intent.getStringExtra(ProgrammeReminders.EXTRA_CHANNEL)
+                if (savedSources.activeSourceId != targetSource) {
+                    savedSources = savedSources.copy(activeSourceId = targetSource)
+                    store.saveSources(savedSources)
+                }
+            }
             source = activeSavedSource?.config
             source?.let(::useActiveNetwork)
             source?.let { load(it, store.resumeLastChannel) }
@@ -370,6 +388,7 @@ class MainActivity : ComponentActivity() {
             insets
         }
         setContentView(root)
+        installCastButton()
         search.setText(oldSearch)
         renderPanels(); renderGroups(); renderChannels()
     }
@@ -401,6 +420,7 @@ class MainActivity : ComponentActivity() {
         status = label(if (channels.isEmpty()) "Conecta un proveedor o prueba la demo" else "${channels.size} canales")
         now = label(selected?.name ?: "Selecciona un canal")
         setContentView(root)
+        installCastButton()
         renderPortraitContent()
         if (channelListScrollPosition > 0 || channelListScrollOffset != 0) channelList.post {
             channelList.setSelectionFromTop(channelListScrollPosition, channelListScrollOffset)
@@ -484,6 +504,7 @@ class MainActivity : ComponentActivity() {
                 onBack = if (appTab == AppTab.CHANNELS) null else ({ appTab = AppTab.CHANNELS; buildLandscapeUi() })
             ), playerHost), LinearLayout.LayoutParams(-1, -1))
         setContentView(root)
+        installCastButton()
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             (view.background as? LandscapeInsetBackground)?.topInset = bars.top
@@ -563,7 +584,7 @@ class MainActivity : ComponentActivity() {
                     onBack = { portraitPlayer = false; portraitPlayerScrollY = 0; renderPortraitContent() },
                     onToggle = { playback.togglePlayPause(); portraitPlayerScreen?.updatePlaying(playback.isPlaying) },
                     onPrevious = { move(-1) }, onNext = { move(1) }, onFullscreen = ::toggleFullscreen,
-                    onCast = { showError("Buscando dispositivos…") },
+                    onCast = ::showCastChooser,
                     onExternal = ::openExternal,
                     onFavorite = {
                         selected?.let { channel ->
@@ -913,6 +934,27 @@ class MainActivity : ComponentActivity() {
 
     private fun isWide() = resources.configuration.screenWidthDp >= 700 ||
         resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    private fun installCastButton() {
+        val host = findViewById<FrameLayout>(android.R.id.content)
+        val button = MediaRouteButton(this).apply {
+            alpha = 0f
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            setAlwaysVisible(true)
+        }
+        host.addView(button, FrameLayout.LayoutParams(dp(1), dp(1), Gravity.TOP or Gravity.END))
+        castRouteButton = button
+        castButtonReady = false
+        val setup = MediaRouteButtonFactory.setUpMediaRouteButton(this, button)
+        setup.addListener({
+            castButtonReady = runCatching { setup.get(); true }.getOrDefault(false)
+        }, androidx.core.content.ContextCompat.getMainExecutor(this))
+    }
+
+    private fun showCastChooser() {
+        val button = castRouteButton
+        if (button == null || !castButtonReady) { showError("Preparando la búsqueda de dispositivos…"); return }
+        if (!button.showDialog()) showError("No se pudo abrir la lista de dispositivos")
+    }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     private fun label(s: String) = TextView(this).apply { text = s; setTextColor(Color.WHITE); textSize = 15f; gravity = Gravity.CENTER_VERTICAL }
     private fun button(s: String, click: () -> Unit) = Button(this).apply {
@@ -994,7 +1036,7 @@ class MainActivity : ComponentActivity() {
                 val last = previous?.let { id -> channels.firstOrNull { it.id == id } }
                 if (last == null) showError("No hay un canal anterior") else selectChannel(last, openPlayer = false)
             },
-            onCast = { showError("Buscando dispositivos…") },
+            onCast = ::showCastChooser,
             onBrightness = { value ->
                 window.attributes = window.attributes.apply { screenBrightness = value.coerceIn(0.01f, 1f) }
             },
@@ -1009,6 +1051,7 @@ class MainActivity : ComponentActivity() {
         fullscreenOverlay = overlay
         root.addView(overlay, LinearLayout.LayoutParams(-1, -1))
         setContentView(root)
+        installCastButton()
         WindowInsetsControllerCompat(window, root).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())
@@ -1142,7 +1185,9 @@ class MainActivity : ComponentActivity() {
                 AlertDialog.Builder(this).setTitle("Avisos puntuales")
                     .setMessage("Android permite ahora avisos aproximados. Puedes activar las alarmas exactas para recibirlos al comenzar el programa.")
                     .setPositiveButton("Activar") { _, _ ->
-                        try { startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)) }
+                        try { startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                            data = android.net.Uri.parse("package:$packageName")
+                        }) }
                         catch (_: Exception) { showError("Abre los permisos de la app para activar las alarmas exactas") }
                     }.setNegativeButton("Más tarde", null).show()
             }

@@ -19,6 +19,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
+    implementation("androidx.media3:media3-cast:1.11.1")
+    implementation("androidx.fragment:fragment:1.9.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.activity:activity:1.13.0")
     implementation("androidx.core:core:1.17.0")

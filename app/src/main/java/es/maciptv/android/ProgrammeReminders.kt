@@ -120,7 +120,8 @@ class ReminderReceiver : BroadcastReceiver() {
         val reminders = ProgrammeReminders(context, SecureStore(context))
         when (intent.action) {
             ProgrammeReminders.ACTION_REMINDER -> intent.data?.lastPathSegment?.let(reminders::deliver)
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> reminders.reconcile()
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED,
+            AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED -> reminders.reconcile()
         }
     }
 }
