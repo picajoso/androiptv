@@ -12,6 +12,8 @@ Abre el directorio del proyecto en Android Studio, espera a que termine la sincr
 - Reproducción integrada con Media3, lista de canales, grupos y búsqueda.
 - Favoritos, recientes, canal anterior y reanudación del último canal al abrir la app.
 - Guía XMLTV, actualización de listas, demo y opción de abrir el canal en otra app con aviso sobre credenciales.
+- En retrato, Canales y Guía comienzan en Listas. La Guía muestra una tabla EPG de desplazamiento bidireccional y una ficha inferior por programa.
+- El reproductor vertical muestra la programación del día bajo el vídeo. «Recordar» guarda una marca compartida con la Guía; las notificaciones quedan para la Fase 3.
 - Paneles de grupos y canales plegables; vista adaptable a móvil y tableta.
 - En apaisado, paneles de grupos y canales junto al reproductor; pestañas de Guía y Ajustes.
 - Controles propios en vertical, apaisado y pantalla completa, con brillo, volumen, bloqueo, temporizador, modo de imagen y panel lateral de canales.
@@ -22,4 +24,4 @@ La guía XMLTV es opcional para M3U. En Xtream se obtiene automáticamente del p
 
 ## Estado de esta versión
 
-Las Fases 1 y 2 del rediseño están implementadas. La pantalla completa usa el mismo reproductor que las otras vistas; los controles se ocultan a los cuatro segundos durante la reproducción y el brillo de la ventana vuelve a su valor previo al salir. Se compiló y se revisó en el emulador API 37. Queda pendiente una revisión manual completa de Guía, Ajustes y migración de fuentes, además de probar en un dispositivo físico. La Fase 3 (recordatorios y Cast) sigue pendiente. Consulta `CLAUDE.md` para arquitectura, decisiones y siguientes pasos.
+Las Fases 1 y 2 y la iteración v2 de retrato están implementadas. La pantalla completa usa el mismo reproductor que las otras vistas; los controles se ocultan a los cuatro segundos durante la reproducción y el brillo de la ventana vuelve a su valor previo al salir. La iteración v2 se compiló y se revisó en el emulador API 37 con una fuente grande. Falta medir la fluidez de la tabla en un dispositivo físico y completar la Fase 3: notificaciones reales y Cast. La especificación y el prototipo están en `design_handoff_androiptv_redesign/`; consulta `CLAUDE.md` para arquitectura y decisiones.

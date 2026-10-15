@@ -71,6 +71,32 @@ object LogoLoader {
         }
     }
 
+    /** Canvas clients share the same bounded cache and active source network as ImageViews. */
+    fun loadBitmap(url: String, network: SafeNetwork, width: Int, height: Int, onReady: (Bitmap?) -> Unit) {
+        if (url.isBlank()) { onReady(null); return }
+        val key = "${System.identityHashCode(network)}|$url|${width}x$height"
+        cache.get(key)?.let { onReady(it); return }
+        executor.execute {
+            val bitmap = runCatching {
+                val bytes = network.fetch(url, MAX_RESPONSE_BYTES)
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Imagen no válida")
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, width, height)
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+                val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: throw IOException("Imagen no válida")
+                val scale = minOf(1f, width.toFloat() / decoded.width, height.toFloat() / decoded.height)
+                if (scale < 1f) Bitmap.createScaledBitmap(decoded,
+                    (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
+                    .also { if (it !== decoded) decoded.recycle() } else decoded
+            }.getOrNull()
+            if (bitmap != null) cache.put(key, bitmap)
+            android.os.Handler(android.os.Looper.getMainLooper()).post { onReady(bitmap) }
+        }
+    }
+
     private fun sampleSize(sourceWidth: Int, sourceHeight: Int, targetWidth: Int, targetHeight: Int): Int {
         var sample = 1
         while (sourceWidth / (sample * 2) >= targetWidth && sourceHeight / (sample * 2) >= targetHeight) sample *= 2

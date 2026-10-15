@@ -18,7 +18,6 @@ import es.maciptv.android.ChannelPresentation
 import es.maciptv.android.Programme
 import es.maciptv.android.ProgrammeSchedule
 import es.maciptv.android.R
-import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -264,5 +263,5 @@ class PortraitPlayerScreen(
 
     private fun rule(height: Int) = View(context).apply { setBackgroundColor(AndroTheme.DIVIDER) }
     private fun dp(value: Int) = AndroTheme.dp(context, value)
-    private fun time() = DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
+    private fun time() = SimpleDateFormat("HH:mm", Locale.getDefault())
 }

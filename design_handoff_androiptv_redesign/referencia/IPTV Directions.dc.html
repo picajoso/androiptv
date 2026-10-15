@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/modernist-b1cb8709-3729-45dd-9509-60c739dceff0/styles.css">
+<link rel="stylesheet" href="https://unpkg.com/lucide-static@0.460.0/font/lucide.css">
+<style>body{margin:0;background:#dcdada;font-family:var(--font-body)}a{color:var(--color-accent-700)}a:hover{color:var(--color-accent-800)}*::-webkit-scrollbar{display:none}*{scrollbar-width:none}[class^="icon-"]{font-style:normal;line-height:1;display:inline-block}</style>
+</helmet>
+<section id="t1" style="padding:48px 56px 40px;display:flex;flex-direction:column;gap:28px;color:var(--color-text)">
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:880px">
+    <div style="display:flex;align-items:baseline;gap:10px"><a href="#t1" style="font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:var(--color-text);color:var(--color-bg);text-decoration:none">1</a><span style="font:800 13px var(--font-heading)">Tres direcciones con el sistema Modernist</span></div>
+    <p style="margin:0;font-size:14px;line-height:1.55;max-width:820px;text-wrap:pretty">Todas parten de lo que ya hace AndroIPTV (MainActivity.kt): grupos, búsqueda, favoritos, recientes, guía XMLTV, anterior/siguiente, abrir fuera y rellenar/conservar imagen. Los nombres M3U se limpian ("|ES| M+ DEPORTES FHD" → M+ Deportes · ES · FHD). Los logos son huecos para el tvg-logo de cada canal. Cada dirección prueba una navegación, una lista, una guía y unos controles distintos.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start">
+
+    <div id="1a" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:8px;font-size:12px"><a href="#1a" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.1);color:var(--color-text);text-decoration:none">1a</a><b>Rejilla clara</b><span style="color:var(--color-neutral-700)">Fondo claro, reglas de 2px, pestañas inferiores, lista con ahora/después, guía en tabla</span></div>
+      <div style="display:flex;gap:24px;align-items:flex-start">
+
+        <div style="width:360px;height:760px;flex:none;position:relative;overflow:hidden;background:var(--color-bg);border:10px solid #141313;border-radius:36px;display:flex;flex-direction:column">
+          <div style="height:30px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:600"><span>10:31</span><span style="display:flex;gap:4px"><i class="icon-signal"></i><i class="icon-wifi"></i><i class="icon-battery-full"></i></span></div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;padding:6px 16px 12px;border-bottom:2px solid var(--color-divider)">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">Mi lista · M3U · 1.240</span>
+              <span style="font:800 26px/1.05 var(--font-heading);letter-spacing:-.02em;display:flex;align-items:center;gap:4px">Canales<i class="icon-chevron-down" style="font-size:20px"></i></span>
+            </div>
+            <div style="display:flex;gap:0;border:1px solid var(--color-divider)">
+              <span style="width:44px;height:44px;display:grid;place-items:center;font-size:20px"><i class="icon-search"></i></span>
+              <span style="width:44px;height:44px;display:grid;place-items:center;font-size:20px;border-left:1px solid var(--color-divider)"><i class="icon-layout-grid"></i></span>
+            </div>
+          </div>
+          <div style="display:flex;overflow-x:auto;border-bottom:1px solid var(--color-divider);flex:none">
+            <sc-for list="{{ groupsA }}" as="g" hint-placeholder-count="5">
+              <span style="flex:none;height:44px;padding:0 14px;display:flex;align-items:center;font-size:13px;font-weight:600;white-space:nowrap;border-right:1px solid var(--color-divider);background:{{ g.bg }};color:{{ g.fg }}">{{ g.label }}</span>
+            </sc-for>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden">
+            <sc-for list="{{ chans }}" as="c" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:52px minmax(0,1fr) 40px;gap:12px;align-items:center;padding:10px 8px 10px 16px;border-bottom:1px solid var(--color-divider);background:{{ c.bgA }}">
+                <div style="width:52px;height:52px;background:#fff;border:1px solid var(--color-divider);display:grid;place-items:center;font:800 13px var(--font-heading);letter-spacing:-.02em">{{ c.mark }}</div>
+                <div style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:0"><span style="font:800 15px var(--font-heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span><span style="flex:none;font-size:9.5px;letter-spacing:.06em;padding:1px 5px;background:var(--color-neutral-200);color:var(--color-neutral-800)">{{ c.cc }}</span><span style="flex:none;font-size:9.5px;letter-spacing:.06em;padding:1px 5px;background:var(--color-neutral-200);color:var(--color-neutral-800)">{{ c.q }}</span></div>
+                  <span style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.now }}</span>
+                  <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:2px;background:var(--color-neutral-300)"><div style="height:2px;background:var(--color-accent);width:{{ c.pctStr }}"></div></div><span style="font-size:10.5px;color:var(--color-neutral-700)">{{ c.end }}</span></div>
+                </div>
+                <span style="width:40px;height:44px;display:grid;place-items:center;font-size:20px;color:{{ c.favFgA }}"><i class="icon-heart"></i></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="flex:none;display:grid;grid-template-columns:minmax(0,1fr) 64px;align-items:center;gap:12px;padding:8px 8px 8px 16px;background:var(--color-text);color:var(--color-bg)">
+            <div style="min-width:0;display:flex;flex-direction:column"><span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-400)">En emisión</span><span style="font:800 14px var(--font-heading)">M+ Deportes · Eurocup</span></div>
+            <span style="height:44px;background:var(--color-accent);display:flex;align-items:center;padding-left:12px;font-size:20px"><i class="icon-pause"></i></span>
+          </div>
+          <div style="flex:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:2px solid var(--color-divider)">
+            <span style="height:56px;padding:0 14px;display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;background:var(--color-accent);color:var(--color-bg)"><i class="icon-tv" style="font-size:18px"></i>Canales</span>
+            <span style="height:56px;padding:0 14px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;border-left:1px solid var(--color-divider)"><i class="icon-calendar-days" style="font-size:18px"></i>Guía</span>
+            <span style="height:56px;padding:0 14px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;border-left:1px solid var(--color-divider)"><i class="icon-settings" style="font-size:18px"></i>Ajustes</span>
+          </div>
+        </div>
+
+        <div style="width:360px;height:760px;flex:none;position:relative;overflow:hidden;background:var(--color-bg);border:10px solid #141313;border-radius:36px;display:flex;flex-direction:column">
+          <div style="height:30px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:600;background:#111;color:#eee"><span>10:31</span><span style="display:flex;gap:4px"><i class="icon-signal"></i><i class="icon-wifi"></i><i class="icon-battery-full"></i></span></div>
+          <div style="height:191px;flex:none;position:relative;background:repeating-linear-gradient(135deg,#3a3838 0 8px,#2f2d2d 8px 16px);color:#eee">
+            <span style="position:absolute;left:12px;top:12px;font:600 10px ui-monospace,Menlo,monospace;letter-spacing:.08em">VÍDEO · B/N</span>
+            <span style="position:absolute;left:8px;top:28px;width:44px;height:44px;display:grid;place-items:center;font-size:22px"><i class="icon-arrow-left"></i></span>
+            <span style="position:absolute;right:8px;top:28px;width:44px;height:44px;display:grid;place-items:center;font-size:20px"><i class="icon-maximize"></i></span>
+            <div style="position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:8px 12px"><span style="font-size:10px;letter-spacing:.1em;padding:2px 6px;background:var(--color-accent);color:#fff">DIRECTO</span><div style="flex:1;height:2px;background:rgba(255,255,255,.3)"><div style="width:26%;height:2px;background:#fff"></div></div><span style="font-size:11px">12:00</span></div>
+          </div>
+          <div style="padding:14px 16px 12px;display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px;border-bottom:2px solid var(--color-divider)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="font:800 22px/1.05 var(--font-heading);letter-spacing:-.02em">M+ Deportes</span>
+              <span style="font-size:13px">Eurocup · Bahçeşehir Koleji – Dreamland Gran Canaria</span>
+              <span style="font-size:11px;color:var(--color-neutral-700)">10:00–12:00 · quedan 1 h 29 min</span>
+            </div>
+            <span style="width:44px;height:44px;display:grid;place-items:center;font-size:20px;border:1px solid var(--color-divider);color:var(--color-accent)"><i class="icon-heart"></i></span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:2px solid var(--color-divider)">
+            <sc-for list="{{ actionsA }}" as="a" hint-placeholder-count="4">
+              <span style="height:64px;padding:10px 10px;display:flex;flex-direction:column;justify-content:space-between;font-size:11.5px;font-weight:600;border-right:1px solid var(--color-divider)"><i class="{{ a.icon }}" style="font-size:18px"></i>{{ a.label }}</span>
+            </sc-for>
+          </div>
+          <div style="padding:14px 16px 6px;display:flex;justify-content:space-between;align-items:baseline"><span style="font:800 16px var(--font-heading)">Guía · hoy</span><span style="font-size:11px;color:var(--color-neutral-700)">mar 14 oct</span></div>
+          <div style="flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--color-divider)">
+            <sc-for list="{{ epgA }}" as="e" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:60px minmax(0,1fr) 40px;align-items:center;border-bottom:1px solid var(--color-divider);background:{{ e.bgA }};color:{{ e.fgA }}">
+                <span style="padding:12px 0 12px 16px;font-size:12.5px;font-weight:600">{{ e.t }}</span>
+                <span style="padding:10px 0;font-size:13.5px;line-height:1.3;display:flex;flex-direction:column;gap:3px;border-left:1px solid var(--color-divider);padding-left:12px"><sc-if value="{{ e.live }}"><span style="align-self:flex-start;font-size:9.5px;letter-spacing:.1em;padding:1px 5px;background:var(--color-accent);color:#fff">DIRECTO</span></sc-if>{{ e.title }}</span>
+                <span style="display:grid;place-items:center;font-size:17px;color:var(--color-neutral-700)"><i class="{{ e.icon }}"></i></span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="width:360px;height:760px;flex:none;position:relative;overflow:hidden;background:var(--color-bg);border:10px solid #141313;border-radius:36px;display:flex;flex-direction:column">
+          <div style="height:30px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:600"><span>10:31</span><span style="display:flex;gap:4px"><i class="icon-signal"></i><i class="icon-wifi"></i><i class="icon-battery-full"></i></span></div>
+          <div style="padding:6px 16px 12px;border-bottom:2px solid var(--color-divider);font:800 26px/1.05 var(--font-heading);letter-spacing:-.02em">Ajustes</div>
+          <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+            <div style="padding:14px 16px 6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">Fuentes</div>
+            <sc-for list="{{ sources }}" as="s" hint-placeholder-count="2">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;align-items:center;padding:4px 4px 4px 16px;border-top:1px solid var(--color-divider);background:{{ s.bg }}">
+                <div style="display:flex;flex-direction:column;gap:2px;padding:6px 0"><span style="display:flex;gap:6px;align-items:center;font:800 15px var(--font-heading)">{{ s.name }}<sc-if value="{{ s.active }}"><span style="font-size:9.5px;letter-spacing:.08em;padding:1px 5px;background:var(--color-accent);color:#fff">ACTIVA</span></sc-if></span><span style="font-size:12px;color:var(--color-neutral-700)">{{ s.kind }} · {{ s.detail }}</span></div>
+                <span style="height:44px;display:grid;place-items:center;font-size:18px"><i class="icon-refresh-cw"></i></span>
+                <span style="height:44px;display:grid;place-items:center;font-size:18px"><i class="icon-trash-2"></i></span>
+              </div>
+            </sc-for>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:2px solid var(--color-divider);border-bottom:2px solid var(--color-divider)">
+              <sc-for list="{{ addOpts }}" as="o" hint-placeholder-count="4">
+                <div style="height:84px;padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between;border-right:1px solid var(--color-divider);border-bottom:1px solid var(--color-divider)"><i class="{{ o.icon }}" style="font-size:20px;color:var(--color-accent)"></i><span style="display:flex;flex-direction:column"><b style="font-size:13.5px">{{ o.label }}</b><span style="font-size:11px;color:var(--color-neutral-700)">{{ o.hint }}</span></span></div>
+              </sc-for>
+            </div>
+            <div style="padding:16px 16px 6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">Reproducción</div>
+            <div style="padding:10px 16px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--color-divider)"><span style="font-size:13.5px;font-weight:600">Imagen a pantalla completa</span><div style="display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--color-divider)"><span style="padding:9px 12px;font-size:13px;background:var(--color-accent);color:var(--color-bg)">Rellenar</span><span style="padding:9px 12px;font-size:13px;border-left:1px solid var(--color-divider)">Sin recortar</span></div></div>
+            <div style="padding:10px 16px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--color-divider)"><span style="font-size:13.5px;font-weight:600">Temporizador de apagado</span><div style="display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--color-divider)"><span style="padding:9px 12px;font-size:13px;background:var(--color-accent);color:var(--color-bg)">No</span><span style="padding:9px 12px;font-size:13px;border-left:1px solid var(--color-divider)">30 min</span><span style="padding:9px 12px;font-size:13px;border-left:1px solid var(--color-divider)">60 min</span><span style="padding:9px 12px;font-size:13px;border-left:1px solid var(--color-divider)">90 min</span></div></div>
+            <div style="padding:12px 16px;display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;border-top:1px solid var(--color-divider);border-bottom:1px solid var(--color-divider)"><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:13.5px;font-weight:600">Reanudar último canal al abrir</span><span style="font-size:11.5px;color:var(--color-neutral-700)">M+ Deportes</span></span><span style="width:40px;height:22px;background:var(--color-accent);position:relative"><span style="position:absolute;right:3px;top:3px;width:16px;height:16px;background:var(--color-bg)"></span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:8px;font-size:12px"><a href="#1b" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.1);color:var(--color-text);text-decoration:none">1b</a><b>Noche</b><span style="color:var(--color-neutral-700)">Tinta como fondo para ver a oscuras, pestañas superiores, cuadrícula de logos, guía en línea de tiempo, reproductor con barras laterales</span></div>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;max-width:1140px">
+
+        <div style="width:360px;height:760px;flex:none;position:relative;overflow:hidden;background:#1a1817;color:#f3f2f2;border:10px solid #000;border-radius:36px;display:flex;flex-direction:column">
+          <div style="height:30px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:600"><span>10:31</span><span style="display:flex;gap:4px"><i class="icon-signal"></i><i class="icon-wifi"></i><i class="icon-battery-full"></i></span></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;align-items:center;padding:4px 4px 0 16px">
+            <span style="display:flex;align-items:center;gap:6px;font:800 18px var(--font-heading)">Servidor casa<i class="icon-chevron-down" style="font-size:16px;color:var(--color-accent-400)"></i></span>
+            <span style="height:44px;display:grid;place-items:center;font-size:20px"><i class="icon-search"></i></span>
+            <span style="height:44px;display:grid;place-items:center;font-size:20px"><i class="icon-settings"></i></span>
+          </div>
+          <div style="display:flex;gap:22px;padding:6px 16px 0;border-bottom:2px solid rgba(243,242,242,.25)">
+            <span style="padding:10px 0;font:800 15px var(--font-heading);box-shadow:inset 0 -3px 0 var(--color-accent)">Canales</span><span style="padding:10px 0;font-size:15px;color:#a9a5a4">Guía</span><span style="padding:10px 0;font-size:15px;color:#a9a5a4">Recientes</span><span style="padding:10px 0;font-size:15px;color:#a9a5a4">Favoritos</span>
+          </div>
+          <div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;flex:none">
+            <sc-for list="{{ groupsA }}" as="g" hint-placeholder-count="5">
+              <span style="flex:none;height:32px;padding:0 12px;display:flex;align-items:center;font-size:12.5px;font-weight:600;white-space:nowrap;border:1px solid {{ g.bdB }};background:{{ g.bgB }};color:{{ g.fgB }}">{{ g.label }}</span>
+            </sc-for>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-content:start;border-top:1px solid rgba(243,242,242,.2)">
+            <sc-for list="{{ chans }}" as="c" hint-placeholder-count="9">
+              <div style="padding:10px;display:flex;flex-direction:column;gap:7px;border-right:1px solid rgba(243,242,242,.2);border-bottom:1px solid rgba(243,242,242,.2);background:{{ c.bgB }}">
+                <div style="aspect-ratio:16/10;background:#2d2b2b;display:grid;place-items:center;font:800 15px var(--font-heading);position:relative">{{ c.mark }}<sc-if value="{{ c.fav }}"><i class="icon-heart" style="position:absolute;right:5px;top:5px;font-size:12px;color:var(--color-accent-400)"></i></sc-if></div>
+                <span style="font:800 12.5px/1.15 var(--font-heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+                <span style="font-size:10.5px;line-height:1.25;color:#bdb9b8;height:26px;overflow:hidden">{{ c.now }}</span>
+                <div style="height:2px;background:rgba(243,242,242,.2)"><div style="height:2px;background:var(--color-accent);width:{{ c.pctStr }}"></div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="width:360px;height:760px;flex:none;position:relative;overflow:hidden;background:#1a1817;color:#f3f2f2;border:10px solid #000;border-radius:36px;display:flex;flex-direction:column">
+          <div style="height:30px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:600"><span>10:31</span><span style="display:flex;gap:4px"><i class="icon-signal"></i><i class="icon-wifi"></i><i class="icon-battery-full"></i></span></div>
+          <div style="display:flex;gap:22px;padding:10px 16px 0;border-bottom:2px solid rgba(243,242,242,.25)">
+            <span style="padding:10px 0;font-size:15px;color:#a9a5a4">Canales</span><span style="padding:10px 0;font:800 15px var(--font-heading);box-shadow:inset 0 -3px 0 var(--color-accent)">Guía</span><span style="padding:10px 0;font-size:15px;color:#a9a5a4">Recientes</span><span style="padding:10px 0;font-size:15px;color:#a9a5a4">Favoritos</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid rgba(243,242,242,.2)">
+            <span style="padding:10px 12px;font-size:11px;color:#a9a5a4;border-right:1px solid rgba(243,242,242,.2)">Ayer</span><span style="padding:10px 12px;font-size:11px;font-weight:800;background:var(--color-accent)">Hoy</span><span style="padding:10px 12px;font-size:11px;color:#a9a5a4;border-left:1px solid rgba(243,242,242,.2)">Mié 15</span><span style="padding:10px 12px;font-size:11px;color:#a9a5a4;border-left:1px solid rgba(243,242,242,.2)">Jue 16</span>
+          </div>
+          <div style="display:grid;grid-template-columns:64px minmax(0,1fr);border-bottom:1px solid rgba(243,242,242,.2)">
+            <span></span>
+            <div style="position:relative;height:28px;border-left:1px solid rgba(243,242,242,.2)">
+              <sc-for list="{{ ticks }}" as="k" hint-placeholder-count="4"><span style="position:absolute;top:8px;font-size:10.5px;color:#bdb9b8;left:{{ k.left }}">{{ k.t }}</span></sc-for>
+            </div>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;position:relative">
+            <sc-for list="{{ tl }}" as="r" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:64px minmax(0,1fr);height:72px;border-bottom:1px solid rgba(243,242,242,.2)">
+                <div style="display:grid;place-items:center;font:800 12px var(--font-heading);background:#2d2b2b;border-right:1px solid rgba(243,242,242,.2)">{{ r.mark }}</div>
+                <div style="position:relative;overflow:hidden">
+                  <sc-for list="{{ r.blocks }}" as="b">
+                    <div style="position:absolute;top:0;bottom:0;padding:8px 8px;display:flex;flex-direction:column;gap:3px;overflow:hidden;border-right:1px solid rgba(243,242,242,.2);left:{{ b.left }};width:{{ b.width }};background:{{ b.bg }}">
+                      <span style="font-size:9px;letter-spacing:.08em;color:{{ b.meta }}">{{ b.t }}{{ b.liveTxt }}</span>
+                      <span style="font-size:11.5px;line-height:1.2;font-weight:600;overflow:hidden">{{ b.title }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+            <div style="position:absolute;top:0;bottom:0;left:calc(64px + (100% - 64px) * 0.1722);width:2px;background:var(--color-accent)"></div>
+          </div>
+        </div>
+
+        <div style="width:760px;height:360px;flex:none;position:relative;overflow:hidden;background:repeating-linear-gradient(135deg,#3a3838 0 10px,#2f2d2d 10px 20px);color:#f3f2f2;border:10px solid #000;border-radius:36px">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.7),rgba(0,0,0,.05) 35%,rgba(0,0,0,.05) 60%,rgba(0,0,0,.8))"></div>
+          <div style="position:absolute;top:14px;left:24px;right:24px;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center">
+            <span style="height:44px;display:grid;place-items:center;font-size:22px"><i class="icon-arrow-left"></i></span>
+            <div style="display:flex;flex-direction:column"><span style="display:flex;gap:8px;align-items:center;font:800 17px var(--font-heading)">M+ Deportes 2<span style="font-size:9.5px;letter-spacing:.06em;padding:1px 5px;background:rgba(243,242,242,.18)">FHD</span></span><span style="font-size:12.5px;color:#d7d3d3">Cuartos de Final 1 T2026 · Torneo de Shanghai</span></div>
+            <span style="height:44px;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;border:1px solid rgba(243,242,242,.4)"><i class="icon-list" style="font-size:18px"></i>Canales</span>
+          </div>
+          <div style="position:absolute;left:30px;top:84px;bottom:110px;width:44px;display:flex;flex-direction:column;align-items:center;gap:10px"><i class="icon-sun" style="font-size:20px"></i><div style="flex:1;width:4px;background:rgba(243,242,242,.25);position:relative"><div style="position:absolute;left:0;right:0;bottom:0;height:68%;background:#f3f2f2"></div></div></div>
+          <div style="position:absolute;right:30px;top:84px;bottom:110px;width:44px;display:flex;flex-direction:column;align-items:center;gap:10px"><i class="icon-volume-2" style="font-size:20px"></i><div style="flex:1;width:4px;background:rgba(243,242,242,.25);position:relative"><div style="position:absolute;left:0;right:0;bottom:0;height:50%;background:#f3f2f2"></div></div></div>
+          <div style="position:absolute;left:0;right:0;top:128px;display:flex;justify-content:center;align-items:center;gap:48px">
+            <span style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-size:11px"><i class="icon-skip-back" style="font-size:28px"></i>M+ Deportes</span>
+            <span style="width:64px;height:64px;background:var(--color-accent);display:grid;place-items:center;font-size:28px"><i class="icon-pause"></i></span>
+            <span style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-size:11px"><i class="icon-skip-forward" style="font-size:28px"></i>LaLiga TV 2</span>
+          </div>
+          <div style="position:absolute;left:30px;right:30px;bottom:58px;display:flex;align-items:center;gap:12px;font-size:11px"><span style="font-size:10px;letter-spacing:.1em;padding:2px 6px;background:var(--color-accent)">DIRECTO</span><span>08:35</span><div style="flex:1;height:3px;background:rgba(243,242,242,.3)"><div style="width:77%;height:3px;background:var(--color-accent)"></div></div><span>11:05</span></div>
+          <div style="position:absolute;left:30px;right:30px;bottom:8px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border-top:1px solid rgba(243,242,242,.3)">
+            <sc-for list="{{ actionsB }}" as="a" hint-placeholder-count="6">
+              <span style="height:44px;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:{{ a.fg }}"><i class="{{ a.icon }}" style="font-size:17px"></i>{{ a.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1c" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:8px;font-size:12px"><a href="#1c" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.1);color:var(--color-text);text-decoration:none">1c</a><b>Cartel</b><span style="color:var(--color-neutral-700)">Campo rojo en la cabecera, grupos en cajón, filas Ahora/Después en dos columnas; en tableta, tres paneles</span></div>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;max-width:1400px">
+
+        <div style="width:360px;height:760px;flex:none;position:relative;overflow:hidden;background:var(--color-bg);border:10px solid #141313;border-radius:36px;display:flex;flex-direction:column">
+          <div style="background:var(--color-accent);color:var(--color-bg);flex:none">
+            <div style="height:30px;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:12px;font-weight:600"><span>10:31</span><span style="display:flex;gap:4px"><i class="icon-signal"></i><i class="icon-wifi"></i><i class="icon-battery-full"></i></span></div>
+            <div style="display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;padding:0 4px">
+              <span style="height:44px;display:grid;place-items:center;font-size:22px"><i class="icon-menu"></i></span><span style="font-size:12px;font-weight:600">Mi lista · 1.240 canales</span><span style="height:44px;display:grid;place-items:center;font-size:20px"><i class="icon-search"></i></span>
+            </div>
+            <div style="padding:10px 16px 16px;font:800 46px/.95 var(--font-heading);letter-spacing:-.035em">ES —<br>Deportes</div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:2px solid rgba(243,242,242,.5)">
+              <span style="padding:10px 16px;font-size:13px;font-weight:800;background:var(--color-bg);color:var(--color-text)">Todos</span><span style="padding:10px 16px;font-size:13px;font-weight:600">Recientes</span><span style="padding:10px 16px;font-size:13px;font-weight:600;border-left:1px solid rgba(243,242,242,.5)">Favoritos</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:8px 16px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-700);border-bottom:2px solid var(--color-divider)"><span>Canal · ahora</span><span style="padding-left:12px">Después</span></div>
+          <div style="flex:1;min-height:0;overflow:hidden">
+            <sc-for list="{{ chans }}" as="c" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid var(--color-divider);background:{{ c.bgA }}">
+                <div style="padding:12px 12px 12px 16px;display:flex;flex-direction:column;gap:4px;border-right:1px solid var(--color-divider)">
+                  <span style="display:flex;gap:8px;align-items:center"><span style="width:28px;height:28px;flex:none;background:#fff;border:1px solid var(--color-divider);display:grid;place-items:center;font:800 9px var(--font-heading)">{{ c.mark }}</span><b style="font:800 14px/1.1 var(--font-heading)">{{ c.name }}</b></span>
+                  <span style="font-size:12px;line-height:1.3;height:31px;overflow:hidden">{{ c.now }}</span>
+                  <div style="height:3px;background:var(--color-neutral-300)"><div style="height:3px;background:var(--color-accent);width:{{ c.pctStr }}"></div></div>
+                </div>
+                <div style="padding:12px 16px 12px 12px;display:flex;flex-direction:column;gap:4px;color:var(--color-neutral-700)"><span style="font-size:11px;font-weight:600">{{ c.end }}</span><span style="font-size:12px;line-height:1.3">{{ c.next }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="width:1000px;height:600px;flex:none;position:relative;overflow:hidden;background:var(--color-bg);border:12px solid #141313;border-radius:30px;display:grid;grid-template-columns:200px 300px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)">
+          <div style="grid-column:1/-1;display:grid;grid-template-columns:200px 300px minmax(0,1fr);background:var(--color-accent);color:var(--color-bg)">
+            <span style="padding:14px 16px;font:800 20px var(--font-heading);letter-spacing:-.02em">AndroIPTV</span>
+            <span style="padding:14px 16px;display:flex;align-items:center;gap:8px;font-size:13px;border-left:1px solid rgba(243,242,242,.5)"><i class="icon-search" style="font-size:18px"></i>Buscar en ES — Deportes</span>
+            <span style="padding:0 8px 0 16px;display:flex;align-items:center;justify-content:space-between;border-left:1px solid rgba(243,242,242,.5);font-size:13px;font-weight:600"><span>Mi lista · 1.240 canales</span><span style="display:flex"><span style="width:44px;height:44px;display:grid;place-items:center;font-size:18px"><i class="icon-refresh-cw"></i></span><span style="width:44px;height:44px;display:grid;place-items:center;font-size:18px"><i class="icon-settings"></i></span></span></span>
+          </div>
+          <div style="border-right:2px solid var(--color-divider);overflow:hidden">
+            <sc-for list="{{ groupsC }}" as="g" hint-placeholder-count="9">
+              <div style="height:44px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;border-bottom:1px solid var(--color-divider);font-weight:{{ g.w }};background:{{ g.bg }};color:{{ g.fg }}"><span>{{ g.label }}</span><span style="font-size:11px;opacity:.7">{{ g.n }}</span></div>
+            </sc-for>
+          </div>
+          <div style="border-right:2px solid var(--color-divider);overflow:hidden">
+            <sc-for list="{{ chans }}" as="c" hint-placeholder-count="8">
+              <div style="display:grid;grid-template-columns:40px minmax(0,1fr) 36px;gap:10px;align-items:center;padding:8px 4px 8px 12px;border-bottom:1px solid var(--color-divider);background:{{ c.bgA }}">
+                <span style="width:40px;height:40px;background:#fff;border:1px solid var(--color-divider);display:grid;place-items:center;font:800 11px var(--font-heading)">{{ c.mark }}</span>
+                <span style="min-width:0;display:flex;flex-direction:column;gap:2px"><b style="font:800 13.5px var(--font-heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</b><span style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.now }}</span></span>
+                <span style="display:grid;place-items:center;font-size:16px;color:{{ c.favFgA }}"><i class="icon-heart"></i></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;min-height:0">
+            <div style="aspect-ratio:16/9;flex:none;position:relative;background:repeating-linear-gradient(135deg,#3a3838 0 10px,#2f2d2d 10px 20px);color:#eee">
+              <span style="position:absolute;left:12px;top:12px;font:600 10px ui-monospace,Menlo,monospace;letter-spacing:.08em">VÍDEO · B/N</span>
+              <div style="position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:8px 12px;background:linear-gradient(transparent,rgba(0,0,0,.6))"><span style="font-size:20px"><i class="icon-pause"></i></span><span style="font-size:10px;letter-spacing:.1em;padding:2px 6px;background:var(--color-accent);color:#fff">DIRECTO</span><div style="flex:1;height:2px;background:rgba(255,255,255,.3)"><div style="width:26%;height:2px;background:#fff"></div></div><i class="icon-cast" style="font-size:17px"></i><i class="icon-maximize" style="font-size:17px"></i></div>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:2px solid var(--color-divider)">
+              <div style="padding:12px 16px;display:flex;flex-direction:column;gap:3px;border-right:1px solid var(--color-divider)"><span style="font-size:10px;letter-spacing:.1em;color:var(--color-accent-700)">AHORA · 10:00–12:00</span><b style="font:800 15px/1.2 var(--font-heading)">Eurocup · Bahçeşehir Koleji – Dreamland Gran Canaria</b></div>
+              <div style="padding:12px 16px;display:flex;flex-direction:column;gap:3px;color:var(--color-neutral-700)"><span style="font-size:10px;letter-spacing:.1em">DESPUÉS · 12:00</span><span style="font-size:13.5px">Fútbol Sala · Primera División</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr))">
+              <sc-for list="{{ actionsC }}" as="a" hint-placeholder-count="5">
+                <span style="height:48px;padding:0 12px;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;border-right:1px solid var(--color-divider)"><i class="{{ a.icon }}" style="font-size:16px"></i>{{ a.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p style="margin:8px 0 0;font-size:12px;color:var(--color-neutral-700)">Prueba: "<a href="#1b">1b</a> pero en claro, con la tabla de guía de <a href="#1a">1a</a>" · "el reproductor de <a href="#1b">1b</a> con la tableta de <a href="#1c">1c</a>" · "prototipo interactivo de <a href="#1a">1a</a>"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const C=[
+ ['M+ Deportes','ES','FHD','M+','Eurocup · Bahçeşehir Koleji – Dreamland Gran Canaria','12:00',26,'Fútbol Sala · Primera División'],
+ ['M+ Deportes 2','ES','FHD','M+2','Cuartos de Final 1 T2026 · Torneo de Shanghai','11:05',77,'M+ Deportes 2'],
+ ['M+ LaLiga TV 2','ES','HD','LL2','LaLiga Hypermotion · Racing – Sporting','12:15',13,'Resumen de la jornada'],
+ ['M+ LaLiga TV 3','ES','FHD','LL3','Mejores goles de la jornada','11:00',52,'LaLiga EA Sports · Previa'],
+ ['DAZN LaLiga','ES','HEVC','DAZN','LaLiga EA Sports · Previa','11:30',2,'El Día Después'],
+ ['Gol Play','ES','FHD','GOL','Fútbol clásico · Final Mundial 2010','11:45',38,'Gol Noticias'],
+ ['DAZN 1','ES','FHD','D1','MotoGP · GP de Australia, carrera','11:00',92,'MotoGP · Rueda de prensa'],
+ ['Eurosport 1','ES','FHD','E1','Ciclismo · Giro de Lombardía','16:00',16,'Snooker · English Open'],
+ ['ESPN','US','HD','ESPN','SportsCenter','11:00',52,'First Take']
+];
+const FAVS=[1,3];
+const GROUPS=['Todos','ES - Fútbol','ES - Deportes','ES - DAZN Eventos','US - Sports','US - Spanish','US - Kids','US - Factual','MLB'];
+const COUNTS=[1240,48,36,22,64,41,18,27,15];
+const TL=[
+ ['M+',[['10:00','12:00','Eurocup · Bahçeşehir – Gran Canaria',0],['12:00','13:00','Fútbol Sala',0]]],
+ ['M+2',[['08:35','11:05','Cuartos de Final 1 · Shanghai',1],['11:05','12:05','M+ Deportes 2',0],['12:05','13:00','Cuartos de Final 2',1]]],
+ ['LL2',[['10:15','12:15','Racing – Sporting',1],['12:15','13:00','Resumen',0]]],
+ ['DAZN',[['09:30','10:30','El Golazo',0],['10:30','11:30','LaLiga · Previa',0],['11:30','13:00','El Día Después',0]]],
+ ['GOL',[['09:45','11:45','Final Mundial 2010',0],['11:45','13:00','Gol Noticias',0]]],
+ ['D1',[['05:00','11:00','MotoGP · GP de Australia',1],['11:00','12:00','Rueda de prensa',0],['12:00','13:00','MotoGP · Resumen',0]]],
+ ['E1',[['09:30','13:00','Ciclismo · Giro de Lombardía',1]]]
+];
+const m=t=>{const[h,mm]=t.split(':').map(Number);return h*60+mm;};
+const W0=m('10:00'),W=180;
+class Component extends DCLogic{
+ renderVals(){
+  const chans=C.map((r,i)=>({name:r[0],cc:r[1],q:r[2],mark:r[3],now:r[4],end:r[5],pctStr:r[6]+'%',next:r[7],fav:FAVS.includes(i),
+   bgA:i===0?'var(--color-accent-100)':'transparent',bgB:i===0?'#3a1a14':'transparent',favFgA:FAVS.includes(i)?'var(--color-accent)':'var(--color-neutral-600)'}));
+  const groupsA=GROUPS.slice(0,7).map((g,i)=>({label:g,bg:i===2?'var(--color-text)':'transparent',fg:i===2?'var(--color-bg)':'var(--color-text)',
+   bgB:i===2?'#f3f2f2':'transparent',fgB:i===2?'#1a1817':'#f3f2f2',bdB:i===2?'#f3f2f2':'rgba(243,242,242,.3)'}));
+  const groupsC=['Favoritos','Recientes',...GROUPS].map((g,i)=>({label:g,n:i<2?['2','3'][i]:COUNTS[i-2],w:i===4?800:400,
+   bg:i===4?'var(--color-text)':'transparent',fg:i===4?'var(--color-bg)':'var(--color-text)'}));
+  const epgA=[['08:00','TBC T2026 · Torneo de Shanghai',0,-1],['08:35','Cuartos de Final 1 T2026 · Torneo de Shanghai',1,0],['11:05','M+ Deportes 2',0,1],['12:05','Cuartos de Final 2 T2026 · Torneo de Shanghai',1,2],['15:00','M+ Deportes 2',0,1],['17:05','M+ Deportes 2',0,1],['22:00','M+ Deportes 2',0,1]]
+   .map(([t,title,live,st])=>({t,title,live:!!live,bgA:st===0?'var(--color-text)':'transparent',fgA:st===0?'var(--color-bg)':st<0?'var(--color-neutral-600)':'var(--color-text)',icon:st===0?'icon-play':st===2?'icon-bell-ring':st>0?'icon-bell':''}));
+  const tl=TL.map(([mark,bl])=>({mark,blocks:bl.map(([s,e,title,live])=>{const a=Math.max(m(s),W0),b=Math.min(m(e),W0+W),on=m(s)<=631&&631<m(e);
+   return {t:s,title,liveTxt:live?' · DIRECTO':'',left:((a-W0)/W*100)+'%',width:((b-a)/W*100)+'%',bg:on?'#2d2b2b':'transparent',meta:live?'var(--color-accent-400)':'#a9a5a4'};})}));
+  const ticks=['10:00','11:00','12:00'].map((t,i)=>({t,left:`calc(${i*33.33}% + 6px)`}));
+  const icons=(arr)=>arr.map(([icon,label,fg])=>({icon,label,fg:fg||'#f3f2f2'}));
+  return {chans,groupsA,groupsC,epgA,tl,ticks,
+   actionsA:icons([['icon-skip-back','Anterior'],['icon-skip-forward','Siguiente'],['icon-cast','Enviar'],['icon-external-link','Abrir fuera']]),
+   actionsB:icons([['icon-cast','Enviar'],['icon-heart','Favorito','var(--color-accent-400)'],['icon-moon','30 min','var(--color-accent-400)'],['icon-scan','Rellenar'],['icon-history','Anterior'],['icon-lock','Bloquear']]),
+   actionsC:icons([['icon-skip-back','Anterior'],['icon-skip-forward','Siguiente'],['icon-heart','Favorito'],['icon-moon','Apagado'],['icon-external-link','Abrir fuera']]),
+   sources:[{name:'Mi lista',kind:'URL M3U',detail:'1.240 canales · hace 1 h',active:true,bg:'var(--color-accent-100)'},{name:'Servidor casa',kind:'Xtream Codes',detail:'3.870 canales · ayer',active:false,bg:'transparent'}],
+   addOpts:[{icon:'icon-link',label:'URL M3U',hint:'Enlace + guía XMLTV'},{icon:'icon-folder-open',label:'Archivo M3U',hint:'Desde el teléfono'},{icon:'icon-server',label:'Xtream Codes',hint:'Servidor y usuario'},{icon:'icon-circle-play',label:'Demostración',hint:'Canales de prueba'}]};
+ }
+}
+</script>
+</body>
+</html>

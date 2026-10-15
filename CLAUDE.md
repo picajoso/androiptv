@@ -12,6 +12,12 @@ Este repositorio contiene el proyecto Android, separado del proyecto macOS MacIP
 
 ## Estado actual
 
+- Iteración v2 de retrato: Canales y Guía usan navegación Listas → contenido; el componente `ui/GroupListView.kt` se comparte. En Canales, la búsqueda desde Listas abarca todos los grupos y, dentro de una lista, solo esa lista.
+- La Guía vertical dibuja una tabla EPG en `ui/EpgGridView.kt` con una sola vista Canvas, filas visibles, dos ejes de desplazamiento, cabecera/columna fijas, logos de la red activa y nodos virtuales de accesibilidad. `ui/PortraitGuideScreen.kt` muestra días disponibles y la ficha inferior. La preparación de programas por canal/día sucede en el executor de `MainActivity`.
+- El reproductor vertical está en `ui/PortraitPlayerScreen.kt`: vídeo fijo 16:9 y datos/acciones/guía desplazables. La misma instancia de `PlayerView` se mueve entre contenedores sin llamar a `play()` al abrir o cerrar esa pantalla.
+- `ProgrammeSchedule.kt` calcula la programación diaria para reproductor y Guía. `SecureStore.reminderMarks` guarda un `Set<String>` persistente con clave `fuenteId|canalId|inicioEpochMillis`. Es solo una marca; aún no programa alarmas ni notificaciones. Al cargar la guía se eliminan las marcas de programas cuyo fin ya consta y ha pasado. Los avisos son «Marcado en la guía» y «Marca quitada».
+- Referencia v2: `design_handoff_androiptv_redesign/CAMBIOS-v2.md` y `IPTV Prototipo.dc.html`. La especificación aprobada está en `docs/superpowers/specs/2026-10-15-androiptv-portrait-v2.md`. Los tres bloques se desarrollaron en el orden reproductor → Canales → Guía.
+
 - Proyecto Android independiente, paquete `es.maciptv.android`, versión `0.1.0`.
 - Compila con `assembleDebug`; el APK de desarrollo está en `app/build/outputs/apk/debug/app-debug.apk`.
 - En el AVD `Medium_Phone_API_37.0` se revisaron Canales en vertical y apaisado, logos, reproducción y entrada/salida de pantalla completa. El emulador se conectó tras un arranque limpio sin cargar el snapshot; para mantenerlo abierto entre turnos se lanzó con `launchctl`.

@@ -53,6 +53,12 @@ import es.maciptv.android.ui.GroupItem
 import es.maciptv.android.ui.GroupListView
 import es.maciptv.android.ui.PortraitGroupItem
 import es.maciptv.android.ui.PortraitStep
+import es.maciptv.android.ui.GuideStep
+import es.maciptv.android.ui.GuideGridRow
+import es.maciptv.android.ui.EpgGridView
+import es.maciptv.android.ui.PortraitGuideScreen
+import es.maciptv.android.ui.PortraitGuideState
+import es.maciptv.android.ui.PortraitGuideActions
 import es.maciptv.android.ui.LandscapePlayerActions
 import es.maciptv.android.ui.LandscapePlayerPanel
 import es.maciptv.android.ui.PortraitPlayerScreen
@@ -152,10 +158,18 @@ class MainActivity : ComponentActivity() {
     private var portraitGroupList: GroupListView? = null
     private var groupListPosition = 0
     private var groupListOffset = 0
+    private var portraitGuideGroupList: GroupListView? = null
+    private var guideGroupListPosition = 0
+    private var guideGroupListOffset = 0
     private var portraitPlayerScreen: PortraitPlayerScreen? = null
     private var portraitPlayerScrollY = 0
     private var guideChannelId: String? = null
     private var guideDayOffset = 0
+    private var guideStep = GuideStep.GROUPS
+    private var guideGridRows: List<GuideGridRow>? = null
+    private var guideAvailableDays: Set<Int> = emptySet()
+    private var guideGridGeneration = 0
+    private var portraitGrid: EpgGridView? = null
     private var channelListScrollPosition = 0
     private var channelListScrollOffset = 0
     private var searchOpen = false
@@ -211,6 +225,8 @@ class MainActivity : ComponentActivity() {
                     renderPortraitContent()
                 } else if (!isWide() && appTab == AppTab.CHANNELS && portraitStep == PortraitStep.CHANNELS) {
                     backToGroups()
+                } else if (!isWide() && appTab == AppTab.GUIDE && guideStep == GuideStep.GRID) {
+                    guideStep = GuideStep.GROUPS; portraitGrid = null; renderPortraitContent()
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -490,11 +506,18 @@ class MainActivity : ComponentActivity() {
 
     private fun renderPortraitContent() {
         if (!::portraitHost.isInitialized) return
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !portraitPlayer
         if (portraitPlayer) portraitPlayerScreen?.let { portraitPlayerScrollY = it.scrollYPosition() }
         if (!portraitPlayer) portraitGroupList?.let {
             if (it.parent != null && it.childCount > 0) {
                 groupListPosition = it.firstVisiblePosition
                 groupListOffset = it.getChildAt(0)?.top ?: 0
+            }
+        }
+        if (!portraitPlayer) portraitGuideGroupList?.let {
+            if (it.parent != null && it.childCount > 0) {
+                guideGroupListPosition = it.firstVisiblePosition
+                guideGroupListOffset = it.getChildAt(0)?.top ?: 0
             }
         }
         portraitHost.removeAllViews()
@@ -523,7 +546,7 @@ class MainActivity : ComponentActivity() {
                             renderPortraitContent()
                         }
                     },
-                    onReminder = { toggleReminderMark(it) }
+                    onReminder = { selected?.let { channel -> toggleReminderMark(channel.id, it) } }
                 ))
             portraitPlayerScreen = screen
             portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
@@ -576,21 +599,44 @@ class MainActivity : ComponentActivity() {
             }
             AppTab.GUIDE -> {
                 (playerView.parent as? ViewGroup)?.removeView(playerView)
-                val channelPresentations = channels.mapNotNull { presentationById[it.id] }
-                    .filter { guide[it.channel.tvgId].orEmpty().isNotEmpty() }
-                val guideChannel = channelPresentations.firstOrNull { it.channel.id == guideChannelId }
-                    ?: selected?.let { channel -> channelPresentations.firstOrNull { it.channel.id == channel.id } }
-                    ?: channelPresentations.firstOrNull()
-                guideChannelId = guideChannel?.channel?.id
-                val day = LocalDate.now(ZoneId.systemDefault()).plusDays(guideDayOffset.toLong())
-                val entries = guideChannel?.let { GuideDayFilter.forDate(guide[it.channel.tvgId].orEmpty(), day, ZoneId.systemDefault()) }.orEmpty()
-                val screen = GuideViews.render(this, GuideUiState(guideChannel, channelPresentations, entries, guideDayOffset),
-                    GuideActions(
-                        onChannel = { guideChannelId = it.channel.id; renderPortraitContent() },
-                        onDay = { guideDayOffset = it.coerceIn(0, 1); renderPortraitContent() },
-                        onWatch = { guideChannel?.let { selectChannel(it.channel, openPlayer = true) } }
-                    ))
+                val groupsView = if (guideStep == GuideStep.GROUPS) GroupListView(this, portraitGroups()) { selectedGroup ->
+                    group = selectedGroup
+                    guideStep = GuideStep.GRID
+                    guideDayOffset = 0
+                    preparePortraitGuide()
+                }.also { portraitGuideGroupList = it } else null
+                val screen = PortraitGuideScreen.render(this, PortraitGuideState(guideStep, group, groupsView,
+                    guideGridRows, guideDayOffset, guideAvailableDays, selected?.id,
+                    activeSavedSource?.id, store.reminderMarks, activeNetwork), PortraitGuideActions(
+                    onBack = { guideStep = GuideStep.GROUPS; portraitGrid = null; renderPortraitContent() },
+                    onNow = {
+                        if (guideDayOffset != 0) { guideDayOffset = 0; preparePortraitGuide() }
+                        else portraitGrid?.scrollToMinute((java.time.LocalTime.now().hour - 6) * 60 + java.time.LocalTime.now().minute, true)
+                    },
+                    onDay = { offset -> guideDayOffset = offset.coerceIn(-1, 3); preparePortraitGuide() },
+                    onChannel = { channel ->
+                        portraitStep = PortraitStep.CHANNELS
+                        group = channel.channel.group
+                        selectChannel(channel.channel, openPlayer = true)
+                    },
+                    onProgramme = { channel, programme, grid ->
+                        PortraitGuideScreen.showProgramme(this, channel, programme, guideDayOffset,
+                            activeSavedSource?.id, store.reminderMarks, activeNetwork,
+                            onMark = {
+                                toggleReminderMark(channel.channel.id, programme, rerender = false)
+                                grid.updateMarks(store.reminderMarks)
+                            },
+                            onWatch = {
+                                portraitStep = PortraitStep.CHANNELS
+                                group = channel.channel.group
+                                selectChannel(channel.channel, openPlayer = true)
+                            },
+                            onDismiss = { grid.clearSelection() })
+                    },
+                    onGridReady = { portraitGrid = it }
+                ))
                 portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
+                groupsView?.post { groupsView.setSelectionFromTop(guideGroupListPosition, guideGroupListOffset) }
             }
             AppTab.SETTINGS -> portraitHost.addView(renderSettings(), LinearLayout.LayoutParams(-1, -1))
         }
@@ -630,6 +676,10 @@ class MainActivity : ComponentActivity() {
         portraitPlayer = false
         portraitPlayerScrollY = 0
         if (tab == AppTab.CHANNELS && appTab == tab && portraitStep == PortraitStep.CHANNELS) backToGroups()
+        if (tab == AppTab.GUIDE && appTab == tab && guideStep == GuideStep.GRID) {
+            guideStep = GuideStep.GROUPS
+            portraitGrid = null
+        }
         appTab = tab
         renderPortraitContent()
     }
@@ -658,6 +708,55 @@ class MainActivity : ComponentActivity() {
                 members.size, if (active) "En emisión · ${presentationById[selected?.id]?.displayName ?: selected?.name}"
                 else members.take(3).joinToString(", ") { presentationById[it.id]?.displayName ?: it.name }.ifBlank { "Vacía" }, active)
         }
+    }
+
+    private fun channelsInGroup(name: String): List<Channel> = when (name) {
+        "Todos" -> channels
+        "Favoritos" -> channels.filter { it.id in store.favorites }
+        "Recientes" -> channels.filter { it.id in store.recents }
+        else -> channels.filter { it.group == name }
+    }
+
+    private fun preparePortraitGuide() {
+        val generation = ++guideGridGeneration
+        val members = channelsInGroup(group)
+        val day = guideDayOffset
+        val guideSnapshot = guide
+        val presentationsSnapshot = presentationById
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        guideGridRows = null
+        guideAvailableDays = emptySet()
+        renderPortraitContent()
+        worker.execute {
+            val days = (-1..3).filter { offset ->
+                val date = today.plusDays(offset.toLong())
+                members.any { ProgrammeSchedule.forDate(guideSnapshot[it.tvgId].orEmpty(), date, zone).isNotEmpty() }
+            }.toSet()
+            val effectiveDay = if (day in days || days.isEmpty()) day else if (0 in days) 0 else days.minBy { kotlin.math.abs(it) }
+            val date = today.plusDays(effectiveDay.toLong())
+            val rows = members.mapNotNull { channel ->
+                presentationsSnapshot[channel.id]?.let { presentation ->
+                    GuideGridRow(presentation, ProgrammeSchedule.forDate(guideSnapshot[channel.tvgId].orEmpty(), date, zone))
+                }
+            }
+            runOnUiThread {
+                if (generation != guideGridGeneration || guideStep != GuideStep.GRID || isDestroyed) return@runOnUiThread
+                guideAvailableDays = days
+                guideDayOffset = effectiveDay
+                guideGridRows = rows
+                renderPortraitContent()
+            }
+        }
+    }
+
+    private fun resetPortraitGuide() {
+        guideGridGeneration++
+        guideGridRows = null
+        guideAvailableDays = emptySet()
+        guideDayOffset = 0
+        guideStep = GuideStep.GROUPS
+        portraitGrid = null
     }
 
     private fun renderSettings(): View = SettingsScreen.render(this,
@@ -701,6 +800,7 @@ class MainActivity : ComponentActivity() {
 
     private fun saveProviderSource(saved: SavedSource) {
         try {
+            resetPortraitGuide()
             val old = savedSources.sources.firstOrNull { it.id == saved.id }
             val configChanged = old != null && old.config != saved.config
             val normalized = saved.copy(
@@ -735,6 +835,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun activateSavedSource(saved: SavedSource) {
+        resetPortraitGuide()
         if (saved.id == activeSavedSource?.id) return
         try {
             val collection = SourceCollection(savedSources.sources, saved.id)
@@ -992,16 +1093,15 @@ class MainActivity : ComponentActivity() {
     }
     private fun currentProgramme(c: Channel): Programme? = presentationById[c.id]?.currentProgramme
 
-    private fun toggleReminderMark(programme: Programme) {
+    private fun toggleReminderMark(channelId: String, programme: Programme, rerender: Boolean = true) {
         val sourceId = activeSavedSource?.id ?: return
-        val channelId = selected?.id ?: return
         if (programme.startMillis <= System.currentTimeMillis()) return
         val key = ProgrammeSchedule.reminderKey(sourceId, channelId, programme.startMillis)
         val marks = store.reminderMarks.toMutableSet()
         val added = marks.add(key)
         if (!added) marks.remove(key)
         store.reminderMarks = marks
-        renderPortraitContent()
+        if (rerender) renderPortraitContent()
         showError(if (added) "Marcado en la guía" else "Marca quitada")
     }
 
@@ -1027,6 +1127,8 @@ class MainActivity : ComponentActivity() {
                     }
                     if (fullscreen) updateFullscreenState()
                     if (portraitPlayer && !isWide() && !fullscreen) renderPortraitContent()
+                    if (guideStep == GuideStep.GRID && appTab == AppTab.GUIDE && !isWide() && !fullscreen)
+                        portraitGrid?.invalidate()
                 }
             }
         }
@@ -1068,6 +1170,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun setSource(config: SourceConfig) {
         try {
+            resetPortraitGuide()
             val existing = activeSavedSource
             val saved = if (existing == null) {
                 SavedSource(UUID.randomUUID().toString(), "Mi lista", config, updatedAt = System.currentTimeMillis())
@@ -1109,6 +1212,7 @@ class MainActivity : ComponentActivity() {
     private fun removeCurrentSource() {
         val active = activeSavedSource ?: return
         try {
+            resetPortraitGuide()
             sleepTimer.cancel()
             loadGeneration++
             playback.stop()
@@ -1189,7 +1293,10 @@ class MainActivity : ComponentActivity() {
                         } else selectChannel(channel, openPlayer = false)
                     } }
                     if (isWide() && !fullscreen) buildLandscapeUi()
-                    else if (::portraitHost.isInitialized && appTab == AppTab.SETTINGS) renderPortraitContent()
+                    else if (::portraitHost.isInitialized) {
+                        if (appTab == AppTab.GUIDE && guideStep == GuideStep.GRID) preparePortraitGuide()
+                        else renderPortraitContent()
+                    }
                 }
             } catch (e: Exception) { runOnUiThread {
                 if (generation == loadGeneration) { loading = false; showError(e.message ?: "Error al cargar canales") }

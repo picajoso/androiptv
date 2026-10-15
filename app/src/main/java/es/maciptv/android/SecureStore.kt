@@ -134,15 +134,17 @@ class SecureStore(context: Context) {
                                 guide: Map<String, List<Programme>>, nowMillis: Long) {
         val byId = channels.associateBy { it.id }
         val prefix = "$sourceId|"
-        reminderMarks = reminderMarks.filterTo(mutableSetOf()) { mark ->
+        val current = reminderMarks
+        val kept = current.filterTo(mutableSetOf()) { mark ->
             if (!mark.startsWith(prefix)) return@filterTo true
             val separator = mark.lastIndexOf('|')
             if (separator <= prefix.length) return@filterTo true
-            val channel = byId[mark.substring(prefix.length, separator)] ?: return@filterTo true
+            val channel = byId[mark.substring(prefix.length, separator)]
             val start = mark.substring(separator + 1).toLongOrNull() ?: return@filterTo true
-            guide[channel.tvgId].orEmpty().firstOrNull { it.startMillis == start }
-                ?.let { it.endMillis > nowMillis } ?: true
+            val match = channel?.let { guide[it.tvgId].orEmpty().firstOrNull { p -> p.startMillis == start } }
+            match?.endMillis?.let { it > nowMillis } ?: true
         }
+        if (kept != current) reminderMarks = kept
     }
 
     var resumeLastChannel: Boolean
