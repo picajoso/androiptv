@@ -50,6 +50,9 @@ import es.maciptv.android.ui.LandscapeActions
 import es.maciptv.android.ui.LandscapePanels
 import es.maciptv.android.ui.LandscapeUiState
 import es.maciptv.android.ui.GroupItem
+import es.maciptv.android.ui.GroupListView
+import es.maciptv.android.ui.PortraitGroupItem
+import es.maciptv.android.ui.PortraitStep
 import es.maciptv.android.ui.LandscapePlayerActions
 import es.maciptv.android.ui.LandscapePlayerPanel
 import es.maciptv.android.ui.PortraitPlayerScreen
@@ -145,6 +148,10 @@ class MainActivity : ComponentActivity() {
     private var logoHttpRestricted = false
     private var appTab = AppTab.CHANNELS
     private var portraitPlayer = false
+    private var portraitStep = PortraitStep.GROUPS
+    private var portraitGroupList: GroupListView? = null
+    private var groupListPosition = 0
+    private var groupListOffset = 0
     private var portraitPlayerScreen: PortraitPlayerScreen? = null
     private var portraitPlayerScrollY = 0
     private var guideChannelId: String? = null
@@ -202,6 +209,8 @@ class MainActivity : ComponentActivity() {
                 if (fullscreen) toggleFullscreen() else if (portraitPlayer && !isWide()) {
                     portraitPlayer = false
                     renderPortraitContent()
+                } else if (!isWide() && appTab == AppTab.CHANNELS && portraitStep == PortraitStep.CHANNELS) {
+                    backToGroups()
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -329,7 +338,9 @@ class MainActivity : ComponentActivity() {
                 hint = "Buscar canales o grupos"; setSingleLine(); setTextColor(Color.BLACK)
                 addTextChangedListener(object : android.text.TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { renderChannels() }
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        renderChannels(); if (::portraitHost.isInitialized && !isWide()) renderPortraitContent()
+                    }
                     override fun afterTextChanged(s: android.text.Editable?) = Unit
                 })
             }
@@ -480,6 +491,12 @@ class MainActivity : ComponentActivity() {
     private fun renderPortraitContent() {
         if (!::portraitHost.isInitialized) return
         if (portraitPlayer) portraitPlayerScreen?.let { portraitPlayerScrollY = it.scrollYPosition() }
+        if (!portraitPlayer) portraitGroupList?.let {
+            if (it.parent != null && it.childCount > 0) {
+                groupListPosition = it.firstVisiblePosition
+                groupListOffset = it.getChildAt(0)?.top ?: 0
+            }
+        }
         portraitHost.removeAllViews()
         if (portraitPlayer) {
             playerView.useController = false
@@ -530,18 +547,32 @@ class MainActivity : ComponentActivity() {
                         list = channelList,
                         playerView = playerView,
                         loading = loading,
-                        playing = playback.isPlaying
+                        playing = playback.isPlaying,
+                        step = portraitStep,
+                        groupsList = if (portraitStep == PortraitStep.GROUPS && search.text.isBlank())
+                            GroupListView(this, portraitGroups()) { selectedGroup ->
+                                group = selectedGroup
+                                portraitStep = PortraitStep.CHANNELS
+                                channelListScrollPosition = 0; channelListScrollOffset = 0
+                                search.setText(""); searchOpen = false
+                                renderChannels(); renderPortraitContent()
+                            }.also { portraitGroupList = it } else null,
+                        visibleCount = displayedChannels.size
                     ),
                     ChannelsActions(
                         onSource = ::sourceDialog,
-                        onGroup = { group = it; renderChannels(); renderPortraitContent() },
+                        onGroup = { group = it; portraitStep = PortraitStep.CHANNELS; renderChannels(); renderPortraitContent() },
                         onSearch = { value, open -> searchOpen = open; if (search.text.toString() != value) search.setText(value) },
                         onSearchToggle = { searchOpen = !searchOpen; renderPortraitContent() },
                         onPreview = { portraitPlayer = true; renderPortraitContent() },
                         onToggle = { playback.togglePlayPause(); renderPortraitContent() },
-                        onFullscreen = ::toggleFullscreen
+                        onFullscreen = ::toggleFullscreen,
+                        onBackToGroups = ::backToGroups
                     ))
                 portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
+                if (portraitStep == PortraitStep.GROUPS && search.text.isBlank()) portraitGroupList?.post {
+                    portraitGroupList?.setSelectionFromTop(groupListPosition, groupListOffset)
+                } else channelList.post { channelList.setSelectionFromTop(channelListScrollPosition, channelListScrollOffset) }
             }
             AppTab.GUIDE -> {
                 (playerView.parent as? ViewGroup)?.removeView(playerView)
@@ -598,8 +629,35 @@ class MainActivity : ComponentActivity() {
         }
         portraitPlayer = false
         portraitPlayerScrollY = 0
+        if (tab == AppTab.CHANNELS && appTab == tab && portraitStep == PortraitStep.CHANNELS) backToGroups()
         appTab = tab
         renderPortraitContent()
+    }
+
+    private fun backToGroups() {
+        portraitStep = PortraitStep.GROUPS
+        searchOpen = false
+        if (search.text.isNotEmpty()) search.setText("")
+        renderChannels()
+        renderPortraitContent()
+    }
+
+    private fun portraitGroups(): List<PortraitGroupItem> {
+        val favorites = store.favorites
+        val recents = store.recents
+        val names = listOf("Todos", "Favoritos", "Recientes") + channels.map { it.group }.distinct()
+        return names.map { name ->
+            val members = when (name) {
+                "Todos" -> channels
+                "Favoritos" -> channels.filter { it.id in favorites }
+                "Recientes" -> channels.filter { it.id in recents }
+                else -> channels.filter { it.group == name }
+            }
+            val active = name != "Todos" && name != "Recientes" && selected?.let { it in members } == true
+            PortraitGroupItem(name, if (name == "Todos") "Todos los canales" else name,
+                members.size, if (active) "En emisión · ${presentationById[selected?.id]?.displayName ?: selected?.name}"
+                else members.take(3).joinToString(", ") { presentationById[it.id]?.displayName ?: it.name }.ifBlank { "Vacía" }, active)
+        }
     }
 
     private fun renderSettings(): View = SettingsScreen.render(this,
@@ -879,8 +937,9 @@ class MainActivity : ComponentActivity() {
         val q = search.text.toString().trim()
         val favorites = store.favorites
         val recents = store.recents
+        val allGroups = !isWide() && appTab == AppTab.CHANNELS && portraitStep == PortraitStep.GROUPS && q.isNotBlank()
         return channels.filter { c ->
-            (group == "Todos" || group == "Favoritos" && c.id in favorites ||
+            (allGroups || group == "Todos" || group == "Favoritos" && c.id in favorites ||
                 group == "Recientes" && c.id in recents || c.group == group) &&
                 ChannelName.matches(c, presentationById[c.id]?.displayName ?: c.name, q)
         }.let { list -> if (group == "Recientes") list.sortedBy { recents.indexOf(it.id) } else list }
@@ -891,6 +950,10 @@ class MainActivity : ComponentActivity() {
         channelAdapter.notifyDataSetChanged()
     }
     private fun selectChannel(c: Channel, openPlayer: Boolean = true) {
+        if (openPlayer && !isWide() && portraitStep == PortraitStep.GROUPS) {
+            group = c.group
+            portraitStep = PortraitStep.CHANNELS
+        }
         if (selected?.id != c.id) {
             portraitPlayerScreen = null
             portraitPlayerScrollY = 0

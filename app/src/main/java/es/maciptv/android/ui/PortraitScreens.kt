@@ -25,8 +25,13 @@ data class ChannelsUiState(
     val list: ListView,
     val playerView: PlayerView,
     val loading: Boolean,
-    val playing: Boolean
+    val playing: Boolean,
+    val step: PortraitStep,
+    val groupsList: View?,
+    val visibleCount: Int
 )
+
+enum class PortraitStep { GROUPS, CHANNELS }
 
 data class ChannelsActions(
     val onSource: () -> Unit,
@@ -35,7 +40,8 @@ data class ChannelsActions(
     val onSearchToggle: () -> Unit,
     val onPreview: () -> Unit,
     val onToggle: () -> Unit,
-    val onFullscreen: () -> Unit
+    val onFullscreen: () -> Unit,
+    val onBackToGroups: () -> Unit
 )
 
 data class PlayerUiState(val channel: ChannelPresentation?, val playerView: PlayerView, val playing: Boolean)
@@ -75,29 +81,34 @@ object PortraitScreens {
                 setPadding(AndroTheme.dp(context, 16), AndroTheme.dp(context, 10), AndroTheme.dp(context, 16), AndroTheme.dp(context, 8))
             }
             val heading = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            if (state.step == PortraitStep.CHANNELS) heading.addView(iconButton(context, R.drawable.ic_arrow_left,
+                "Volver a las listas", actions.onBackToGroups), LinearLayout.LayoutParams(AndroTheme.dp(context, 44), AndroTheme.dp(context, 44)))
             val headingText = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setOnClickListener { actions.onSource() } }
-            headingText.addView(text(context, state.sourceHeader, TextStyle.Kicker))
-            headingText.addView(text(context, "Canales", TextStyle.ScreenTitle))
+            val searchingAll = state.step == PortraitStep.GROUPS && state.search.isNotBlank()
+            headingText.addView(text(context, when {
+                searchingAll -> "Resultados en todas las listas"
+                state.step == PortraitStep.CHANNELS -> "${state.visibleCount} canales"
+                else -> state.sourceHeader
+            }, TextStyle.Kicker).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            headingText.addView(text(context, if (state.step == PortraitStep.GROUPS) "Listas" else
+                if (state.selectedGroup == "Todos") "Todos los canales" else state.selectedGroup, TextStyle.ScreenTitle).apply {
+                    maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                })
             heading.addView(headingText, LinearLayout.LayoutParams(0, -1, 1f))
             heading.addView(iconButton(context, R.drawable.ic_search, context.getString(R.string.a11y_search), actions.onSearchToggle))
             header.addView(heading, LinearLayout.LayoutParams(-1, -1))
             addView(header, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 64)))
+            addView(View(context).apply { setBackgroundColor(AndroTheme.TEXT) }, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 2)))
             if (state.searchOpen) {
             (state.searchView.parent as? android.view.ViewGroup)?.removeView(state.searchView)
             addView(state.searchView, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 48)))
             }
-            val groupScroll = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
-            val groupRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            state.groups.forEach { group ->
-                groupRow.addView(flatButton(context, group, { actions.onGroup(group) },
-                    if (group == state.selectedGroup) AndroTheme.TEXT else AndroTheme.BG,
-                    if (group == state.selectedGroup) Color.WHITE else AndroTheme.TEXT))
-            }
-            groupScroll.addView(groupRow)
-            addView(groupScroll, LinearLayout.LayoutParams(-1, AndroTheme.dp(context, 44)))
             if (state.loading) addView(text(context, "Cargando canales…", TextStyle.Body))
-            (state.list.parent as? android.view.ViewGroup)?.removeView(state.list)
-            addView(state.list, LinearLayout.LayoutParams(-1, 0, 1f))
+            val body = if (state.step == PortraitStep.GROUPS && state.search.isBlank()) state.groupsList else state.list
+            body?.let {
+                (it.parent as? android.view.ViewGroup)?.removeView(it)
+                addView(it, LinearLayout.LayoutParams(-1, 0, 1f))
+            }
         }
 
     fun renderPlayer(context: Context, state: PlayerUiState, actions: PlayerActions): View =
