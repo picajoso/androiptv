@@ -15,7 +15,9 @@ Este repositorio contiene el proyecto Android, separado del proyecto macOS MacIP
 - Iteración v2 de retrato: Canales y Guía usan navegación Listas → contenido; el componente `ui/GroupListView.kt` se comparte. En Canales, la búsqueda desde Listas abarca todos los grupos y, dentro de una lista, solo esa lista.
 - La Guía vertical dibuja una tabla EPG en `ui/EpgGridView.kt` con una sola vista Canvas, filas visibles, dos ejes de desplazamiento, cabecera/columna fijas, logos de la red activa y nodos virtuales de accesibilidad. `ui/PortraitGuideScreen.kt` muestra días disponibles y la ficha inferior. La preparación de programas por canal/día sucede en el executor de `MainActivity`.
 - El reproductor vertical está en `ui/PortraitPlayerScreen.kt`: vídeo fijo 16:9 y datos/acciones/guía desplazables. La misma instancia de `PlayerView` se mueve entre contenedores sin llamar a `play()` al abrir o cerrar esa pantalla.
-- `ProgrammeSchedule.kt` calcula la programación diaria para reproductor y Guía. `SecureStore.reminderMarks` guarda un `Set<String>` persistente con clave `fuenteId|canalId|inicioEpochMillis`. Es solo una marca; aún no programa alarmas ni notificaciones. Al cargar la guía se eliminan las marcas de programas cuyo fin ya consta y ha pasado. Los avisos son «Marcado en la guía» y «Marca quitada».
+- `ProgrammeSchedule.kt` calcula la programación diaria para reproductor y Guía. `SecureStore.reminderMarks` sigue siendo el `Set<String>` persistente con clave `fuenteId|canalId|inicioEpochMillis`. `ProgrammeReminders.kt` guarda metadatos de presentación aparte, programa/cancela alarmas y publica notificaciones mediante `ReminderReceiver`; restaura alarmas al reiniciar o actualizar, y recupera marcas antiguas al cargar la guía. Al quitar una fuente, cancela solo sus avisos. Al cargar la guía se eliminan las marcas ya terminadas.
+- La alarma exacta usa `SCHEDULE_EXACT_ALARM` si Android lo autoriza; de lo contrario `setAndAllowWhileIdle` puede retrasarse. En Android 13+ se solicita `POST_NOTIFICATIONS` al crear el primer aviso. La notificación abre la fuente y el canal marcados. La entrega de una alarma real tras reinicio todavía requiere comprobación en hardware.
+- `PlaybackController.kt` construye un `CastPlayer` con el ExoPlayer local y un `DataSource.Factory` que usa la `SafeNetwork` activa. El selector MediaRouteButton se instala en `MainActivity` y se abre desde las acciones «Enviar»; el tema debe descender de `Theme.AppCompat` para el diálogo. El receptor Cast predeterminado recibe la URL validada, pero descarga directamente del proveedor y no hereda cabeceras, cookies ni validaciones de redirección de `SafeNetwork`. La transferencia real queda por probar con un receptor físico.
 - Referencia v2: `design_handoff_androiptv_redesign/CAMBIOS-v2.md` y `IPTV Prototipo.dc.html`. La especificación aprobada está en `docs/superpowers/specs/2026-10-15-androiptv-portrait-v2.md`. Los tres bloques se desarrollaron en el orden reproductor → Canales → Guía.
 
 - Proyecto Android independiente, paquete `es.maciptv.android`, versión `0.1.0`.
@@ -36,7 +38,7 @@ El emulador puede desconectarse de ADB o cerrarse; eso no equivale por sí solo 
 - Gradle Wrapper: `9.6.0`.
 - `compileSdk`: 37; `targetSdk`: 35; `minSdk`: 26 (Android 8.0).
 - Java/Kotlin: toolchain Java 17; AGP 9 usa Kotlin integrado.
-- Media3: `1.11.1` (ExoPlayer, HLS, UI y OkHttp DataSource).
+- Media3: `1.11.1` (ExoPlayer, HLS, UI, OkHttp DataSource y Cast); AndroidX Fragment `1.9.1` para el selector Cast.
 - OkHttp: `4.12.0`; AndroidX Activity `1.13.0`; AndroidX Core `1.17.0`.
 - Android SDK: usa la ruta configurada en `ANDROID_HOME` o en el Android Studio local.
 
@@ -150,7 +152,7 @@ Las Fases 1 y 2 están implementadas. Próximos pasos, sujetos a la prioridad de
 4. Endurecer XMLTV frente a DTD/entidades y aceptar variantes de zona horaria que aparezcan en proveedores reales.
 5. Valorar un relay HLS Android con validación de cada manifiesto, segmento, clave y redirección si los proveedores muestran fallos de token/segmento.
 6. Probar API 26 y un dispositivo físico, además del AVD API 37; comprobar rotación, listas grandes, HEVC, sonido, cambios rápidos de canal y reanudación.
-7. Planificar la Fase 3 de recordatorios y Cast tras la revisión de Fase 2 con el usuario; Cast sigue siendo un aviso de búsqueda sin conexión real.
+7. Comprobar en hardware la entrega de notificaciones exactas/aproximadas tras reinicio y la transferencia Cast, incluida la vuelta al teléfono. Para Cast en segundo plano y controles del sistema, valorar mover ambos reproductores a un `MediaSessionService`.
 
 No se ha implementado Android TV, reproducción en segundo plano, Picture-in-Picture ni control remoto específico.
 
