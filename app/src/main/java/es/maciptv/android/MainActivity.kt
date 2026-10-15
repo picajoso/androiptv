@@ -946,7 +946,7 @@ class MainActivity : FragmentActivity() {
         castButtonReady = false
         val setup = MediaRouteButtonFactory.setUpMediaRouteButton(this, button)
         setup.addListener({
-            castButtonReady = runCatching { setup.get(); true }.getOrDefault(false)
+            if (castRouteButton === button) castButtonReady = runCatching { setup.get(); true }.getOrDefault(false)
         }, androidx.core.content.ContextCompat.getMainExecutor(this))
     }
 
