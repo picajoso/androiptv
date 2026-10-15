@@ -126,6 +126,25 @@ class SecureStore(context: Context) {
         get() = prefs.getString("recents", "")!!.split(',').filter { it.isNotEmpty() }
         set(value) { prefs.edit().putString("recents", value.joinToString(",")).apply() }
 
+    var reminderMarks: Set<String>
+        get() = prefs.getStringSet("reminderMarks.v1", emptySet())?.toSet() ?: emptySet()
+        set(value) { prefs.edit().putStringSet("reminderMarks.v1", value.toSet()).apply() }
+
+    fun pruneEndedReminderMarks(sourceId: String, channels: List<Channel>,
+                                guide: Map<String, List<Programme>>, nowMillis: Long) {
+        val byId = channels.associateBy { it.id }
+        val prefix = "$sourceId|"
+        reminderMarks = reminderMarks.filterTo(mutableSetOf()) { mark ->
+            if (!mark.startsWith(prefix)) return@filterTo true
+            val separator = mark.lastIndexOf('|')
+            if (separator <= prefix.length) return@filterTo true
+            val channel = byId[mark.substring(prefix.length, separator)] ?: return@filterTo true
+            val start = mark.substring(separator + 1).toLongOrNull() ?: return@filterTo true
+            guide[channel.tvgId].orEmpty().firstOrNull { it.startMillis == start }
+                ?.let { it.endMillis > nowMillis } ?: true
+        }
+    }
+
     var resumeLastChannel: Boolean
         get() = prefs.getBoolean("resumeLastChannel", true)
         set(value) { prefs.edit().putBoolean("resumeLastChannel", value).apply() }

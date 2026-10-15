@@ -52,6 +52,9 @@ import es.maciptv.android.ui.LandscapeUiState
 import es.maciptv.android.ui.GroupItem
 import es.maciptv.android.ui.LandscapePlayerActions
 import es.maciptv.android.ui.LandscapePlayerPanel
+import es.maciptv.android.ui.PortraitPlayerScreen
+import es.maciptv.android.ui.PortraitPlayerState
+import es.maciptv.android.ui.PortraitPlayerActions
 import es.maciptv.android.ui.FullscreenActions
 import es.maciptv.android.ui.FullscreenChannelItem
 import es.maciptv.android.ui.FullscreenOverlay
@@ -142,6 +145,8 @@ class MainActivity : ComponentActivity() {
     private var logoHttpRestricted = false
     private var appTab = AppTab.CHANNELS
     private var portraitPlayer = false
+    private var portraitPlayerScreen: PortraitPlayerScreen? = null
+    private var portraitPlayerScrollY = 0
     private var guideChannelId: String? = null
     private var guideDayOffset = 0
     private var channelListScrollPosition = 0
@@ -474,21 +479,42 @@ class MainActivity : ComponentActivity() {
 
     private fun renderPortraitContent() {
         if (!::portraitHost.isInitialized) return
+        if (portraitPlayer) portraitPlayerScreen?.let { portraitPlayerScrollY = it.scrollYPosition() }
         portraitHost.removeAllViews()
         if (portraitPlayer) {
             playerView.useController = false
             val current = selected?.let { presentationById[it.id] }
-            val screen = PortraitScreens.renderPlayer(this,
-                PlayerUiState(current, playerView, playback.isPlaying),
-                PlayerActions(
-                    onBack = { portraitPlayer = false; renderPortraitContent() },
-                    onToggle = { playback.togglePlayPause(); renderPortraitContent() },
-                    onPrevious = { move(-1) }, onNext = { move(1) }, onFullscreen = ::toggleFullscreen
+            val programmes = selected?.let { channel ->
+                ProgrammeSchedule.forDate(guide[channel.tvgId].orEmpty(), LocalDate.now(ZoneId.systemDefault()), ZoneId.systemDefault())
+            }.orEmpty()
+            val screen = PortraitPlayerScreen(this,
+                PortraitPlayerState(current, playerView, playback.isPlaying,
+                    selected?.id in store.favorites, selected?.group ?: group,
+                    programmes, store.reminderMarks, activeSavedSource?.id),
+                PortraitPlayerActions(
+                    onBack = { portraitPlayer = false; portraitPlayerScrollY = 0; renderPortraitContent() },
+                    onToggle = { playback.togglePlayPause(); portraitPlayerScreen?.updatePlaying(playback.isPlaying) },
+                    onPrevious = { move(-1) }, onNext = { move(1) }, onFullscreen = ::toggleFullscreen,
+                    onCast = { showError("Buscando dispositivos…") },
+                    onExternal = ::openExternal,
+                    onFavorite = {
+                        selected?.let { channel ->
+                            val favorites = store.favorites.toMutableSet()
+                            if (!favorites.add(channel.id)) favorites.remove(channel.id)
+                            store.favorites = favorites
+                            renderChannels()
+                            renderPortraitContent()
+                        }
+                    },
+                    onReminder = { toggleReminderMark(it) }
                 ))
+            portraitPlayerScreen = screen
             portraitHost.addView(screen, LinearLayout.LayoutParams(-1, -1))
+            screen.restoreScroll(portraitPlayerScrollY)
             syncPortraitTabs()
             return
         }
+        portraitPlayerScreen = null
         when (appTab) {
             AppTab.CHANNELS -> {
                 (playerView.parent as? ViewGroup)?.removeView(playerView)
@@ -571,6 +597,7 @@ class MainActivity : ComponentActivity() {
             channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
         }
         portraitPlayer = false
+        portraitPlayerScrollY = 0
         appTab = tab
         renderPortraitContent()
     }
@@ -864,6 +891,10 @@ class MainActivity : ComponentActivity() {
         channelAdapter.notifyDataSetChanged()
     }
     private fun selectChannel(c: Channel, openPlayer: Boolean = true) {
+        if (selected?.id != c.id) {
+            portraitPlayerScreen = null
+            portraitPlayerScrollY = 0
+        }
         if (openPlayer && !isWide() && ::channelList.isInitialized && channelList.childCount > 0) {
             channelListScrollPosition = channelList.firstVisiblePosition
             channelListScrollOffset = channelList.getChildAt(0)?.top ?: 0
@@ -898,6 +929,19 @@ class MainActivity : ComponentActivity() {
     }
     private fun currentProgramme(c: Channel): Programme? = presentationById[c.id]?.currentProgramme
 
+    private fun toggleReminderMark(programme: Programme) {
+        val sourceId = activeSavedSource?.id ?: return
+        val channelId = selected?.id ?: return
+        if (programme.startMillis <= System.currentTimeMillis()) return
+        val key = ProgrammeSchedule.reminderKey(sourceId, channelId, programme.startMillis)
+        val marks = store.reminderMarks.toMutableSet()
+        val added = marks.add(key)
+        if (!added) marks.remove(key)
+        store.reminderMarks = marks
+        renderPortraitContent()
+        showError(if (added) "Marcado en la guía" else "Marca quitada")
+    }
+
     private fun refreshPresentations() {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
@@ -919,6 +963,7 @@ class MainActivity : ComponentActivity() {
                         landscapePlayerPanel?.updateProgrammes(current, current?.let { nextProgramme(it.channel) })
                     }
                     if (fullscreen) updateFullscreenState()
+                    if (portraitPlayer && !isWide() && !fullscreen) renderPortraitContent()
                 }
             }
         }
@@ -1055,6 +1100,9 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (generation != loadGeneration) return@runOnUiThread
                     channels = parsed; guide = programmes; loading = false
+                    activeSavedSource?.takeIf { it.config == config }?.let { active ->
+                        store.pruneEndedReminderMarks(active.id, parsed, programmes, System.currentTimeMillis())
+                    }
                     logoHttpRestricted = blockedLogos
                     activeSavedSource?.takeIf { it.config == config }?.let { active ->
                         val refreshed = active.copy(channelCount = parsed.size, updatedAt = System.currentTimeMillis(),
