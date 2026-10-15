@@ -18,6 +18,7 @@ Este repositorio contiene el proyecto Android, separado del proyecto macOS MacIP
 - `ProgrammeSchedule.kt` calcula la programación diaria para reproductor y Guía. `SecureStore.reminderMarks` sigue siendo el `Set<String>` persistente con clave `fuenteId|canalId|inicioEpochMillis`. `ProgrammeReminders.kt` guarda metadatos de presentación aparte, programa/cancela alarmas y publica notificaciones mediante `ReminderReceiver`; restaura alarmas al reiniciar o actualizar, y recupera marcas antiguas al cargar la guía. Al quitar una fuente, cancela solo sus avisos. Al cargar la guía se eliminan las marcas ya terminadas.
 - La alarma exacta usa `SCHEDULE_EXACT_ALARM` si Android lo autoriza; de lo contrario `setAndAllowWhileIdle` puede retrasarse. En Android 13+ se solicita `POST_NOTIFICATIONS` al crear el primer aviso. La notificación abre la fuente y el canal marcados. La entrega de una alarma real tras reinicio todavía requiere comprobación en hardware.
 - `PlaybackController.kt` construye un `CastPlayer` con el ExoPlayer local y un `DataSource.Factory` que usa la `SafeNetwork` activa. El selector MediaRouteButton se instala en `MainActivity` y se abre desde las acciones «Enviar»; el tema debe descender de `Theme.AppCompat` para el diálogo. El receptor Cast predeterminado recibe la URL validada, pero descarga directamente del proveedor y no hereda cabeceras, cookies ni validaciones de redirección de `SafeNetwork`. La transferencia real queda por probar con un receptor físico.
+- Fase 3 integrada en `main` y publicada en GitHub mediante los commits `66d2c3a` (avisos), `4298782` (Cast), `70cfdcd` (documentación) y `d472226` (selector tras rotación). La compilación `assembleDebug` terminó correctamente y el APK se copió a la ruta habitual e instaló en el emulador. El selector «Enviar» se abrió y descubrió dos dispositivos Cast de la red; **no se eligió ninguno**, para evitar encender o interrumpir un televisor. Por tanto, ni la transferencia de vídeo ni el control remoto están comprobados. Tampoco se ha observado todavía la entrega de una alarma real tras reinicio.
 - Referencia v2: `design_handoff_androiptv_redesign/CAMBIOS-v2.md` y `IPTV Prototipo.dc.html`. La especificación aprobada está en `docs/superpowers/specs/2026-10-15-androiptv-portrait-v2.md`. Los tres bloques se desarrollaron en el orden reproductor → Canales → Guía.
 
 - Proyecto Android independiente, paquete `es.maciptv.android`, versión `0.1.0`.
@@ -64,7 +65,7 @@ El emulador disponible en el equipo se inicia con:
 emulator -avd Medium_Phone_API_37.0
 ```
 
-No hay una suite de pruebas Android creada todavía. Hasta ahora la comprobación ha sido compilación y uso manual en el emulador; no describas una compilación como prueba de todos los flujos ni como prueba en un móvil físico.
+Hay dos pruebas unitarias JUnit (`ChannelNameTest.kt` y `GuideDayFilterTest.kt`), pero no una suite de pruebas de integración Android. La Fase 3 se comprobó mediante compilación y uso manual del selector en el emulador; no describas una compilación como prueba de todos los flujos ni como prueba en un móvil físico.
 
 ## Mapa del código
 
@@ -74,14 +75,15 @@ Código Kotlin: `app/src/main/java/es/maciptv/android/`.
 | --- | --- |
 | `MainActivity.kt` | Punto de entrada: carga/selección de fuente, grupos y búsqueda, navegación, guías, orientación/pantalla completa, estados y reanudación. Actualmente concentra bastante lógica. |
 | `Models.kt` | `SourceConfig`, `Channel`, `Programme`, construcción de URLs Xtream e identificadores persistentes de canal. |
-| `SecureStore.kt` | Cifrado AES/GCM de la configuración de proveedor con clave Android Keystore; preferencias para último canal, favoritos y recientes. |
+| `SecureStore.kt` | Cifrado AES/GCM de la configuración de proveedor con clave Android Keystore; preferencias para último canal, favoritos, recientes y el conjunto persistente de marcas de la guía. |
+| `ProgrammeReminders.kt` | Metadatos de presentación de cada marca, alarmas exactas o aproximadas, cancelación y reconciliación, receptor de reinicio/actualización y notificaciones que abren fuente y canal. |
 | `SafeNetwork.kt` | Cliente OkHttp, validación HTTP/HTTPS, redirecciones, límites de respuesta y bloqueo DNS de IP privadas salvo autorización de servidor local. |
 | `PlaylistParsers.kt` | Parseo de M3U y XMLTV con límites de tamaño/canales/programas. |
-| `PlaybackController.kt` | ExoPlayer/Media3, reproducción HLS y progresiva, User-Agent compatible con el proveedor, reintentos y fallback de Xtream HLS a la URL TS original en respuestas 4xx. |
+| `PlaybackController.kt` | Media3 `CastPlayer` con ExoPlayer local, controles local/remoto, reproducción HLS y progresiva, User-Agent local compatible con el proveedor, reintentos y fallback de Xtream HLS a la URL TS original en respuestas 4xx. |
 | `DemoContent.kt` | Canales HLS públicos y programación ficticia para la demo. |
 | `ChannelName.kt`, `GuideDayFilter.kt`, `ChannelPresentation.kt` | Nombre de pantalla, filtro local por fecha y presentación de programa/progreso calculados al cargar y refrescados cada minuto. |
 | `ui/` | Primitivas visuales, vistas verticales/apaisadas, guía, ajustes, filas/logo y temporizador. |
-| `AndroidManifest.xml` | Permiso de red, etiqueta, tema, backup desactivado, actividad principal y cambios de configuración de orientación. |
+| `AndroidManifest.xml` | Permisos de red, notificaciones, alarmas exactas y arranque; receptor de avisos; proveedor de opciones Cast predeterminado; tema AppCompat, backup desactivado y actividad principal. |
 
 Los ajustes del proyecto están en `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties` y `app/build.gradle.kts`. No hay layouts XML de pantalla: la interfaz se construye desde Kotlin.
 
@@ -92,7 +94,9 @@ Los ajustes del proyecto están en `settings.gradle.kts`, `build.gradle.kts`, `g
 3. `PlaylistParsers.m3u` convierte entradas válidas en canales. Xtream usa `get.php` con `type=m3u_plus&output=ts`; la guía se obtiene de `xmltv.php`.
 4. La lista se filtra por grupo, favoritos, recientes y texto de búsqueda. `ListView`/`BaseAdapter` recicla filas; `displayedChannels` contiene los resultados y no debe convertirse en decenas de miles de `View` persistentes.
 5. Al elegir canal, se persiste su ID y se actualizan recientes. Al volver a abrir se busca ese ID en la lista importada y se reanuda.
-6. `PlaybackController` crea una instancia de red y entrega HLS o TS a Media3. En Xtream, las rutas `live/.../<id>.ts` se prueban primero como `.m3u8`; ante HTTP 4xx se intenta la URL original.
+6. `PlaybackController` usa la `SafeNetwork` de la fuente activa para ExoPlayer local y entrega HLS o TS a Media3. En Xtream, las rutas `live/.../<id>.ts` se prueban primero como `.m3u8`; ante HTTP 4xx local se intenta la URL original.
+7. Al marcar un programa futuro, `MainActivity` añade su clave estable al `Set` de `SecureStore` y `ProgrammeReminders` programa una alarma. Se solicita permiso de notificaciones en Android 13+ y, si faltan alarmas exactas, se ofrece activar el permiso especial; mientras tanto hay una alarma aproximada. Al quitar marca o fuente se cancela su alarma. Al cargar guía se purgan marcas terminadas y se programan marcas anteriores que aún estén vigentes.
+8. «Enviar» abre el selector MediaRoute. Si el usuario elige un dispositivo, `CastPlayer` cambia al reproductor remoto y los controles usan el reproductor activo. El receptor predeterminado descarga la URL directamente; puede fallar con servidores que requieren cabeceras propias o no son accesibles desde el televisor.
 
 ## Decisiones y límites técnicos
 
@@ -141,10 +145,12 @@ Los controles son propios en vertical, apaisado y pantalla completa (`PlayerView
 - Limpieza de nombres solo visual; búsqueda incluye el nombre original. Guía Hoy/Mañana filtrada por día local y fechas con el idioma del dispositivo.
 - Logo por fuente con un único cliente de red seguro compartido, caché acotada a 1/16 del heap y decodificación al tamaño de pantalla. Si HTTP no está autorizado, se muestran iniciales y se informa en Ajustes.
 - Temporizador de apagado temporal que no se persiste; se cancela al destruir la actividad o quitar la fuente activa.
+- Avisos de programas persistentes con notificaciones, reconciliación tras reinicio/actualización y apertura del canal desde el aviso; la entrega real en hardware sigue pendiente de comprobar.
+- Selector Cast y delegación local/remota de Media3; el descubrimiento se vio en el emulador, pero el envío y la vuelta al teléfono aún no se han probado.
 
 ## Pendiente y posibles siguientes pasos
 
-Las Fases 1 y 2 están implementadas. Próximos pasos, sujetos a la prioridad del usuario:
+Las Fases 1, 2 y 3 están implementadas. Próximos pasos, sujetos a la prioridad del usuario:
 
 1. Añadir pruebas unitarias para M3U, XMLTV, generación de URLs Xtream, identidad estable y cifrado/descifrado.
 2. Separar estado, carga de datos y lógica de reproducción de `MainActivity` hacia clases con ciclo de vida claro; valorar ViewModel y repositorio.
